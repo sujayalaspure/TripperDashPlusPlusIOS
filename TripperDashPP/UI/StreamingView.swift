@@ -112,33 +112,6 @@ struct StreamingView: View {
                 Text("Demo mode simulates the dash on-screen without the bike — for trying the app without hardware. Everything else (GPS, routing, voice) stays real; nothing is sent over Wi-Fi.")
             }
 
-            Section("Dash display") {
-                Picker("Units", selection: Binding(
-                    get: { status.dashNavSettings.units },
-                    set: { status.dashNavSettings.units = $0 }
-                )) {
-                    ForEach(DashNavSettings.UnitSystem.allCases) { u in
-                        Text(u.label).tag(u)
-                    }
-                }
-                Picker("Decimal separator", selection: Binding(
-                    get: { status.dashNavSettings.decimalSeparator },
-                    set: { status.dashNavSettings.decimalSeparator = $0 }
-                )) {
-                    ForEach(DashNavSettings.DecimalSeparator.allCases) { d in
-                        Text(d.label).tag(d)
-                    }
-                }
-                Picker("Clock", selection: Binding(
-                    get: { status.dashNavSettings.clockFormat },
-                    set: { status.dashNavSettings.clockFormat = $0 }
-                )) {
-                    ForEach(DashNavSettings.ClockFormat.allCases) { c in
-                        Text(c.label).tag(c)
-                    }
-                }
-            }
-
             Section("Voice guidance") {
                 Toggle(isOn: Binding(
                     get: { status.dashNavSettings.voiceEnabled },
@@ -174,12 +147,36 @@ struct StreamingView: View {
                 }
             }
 
-            Section("Notifications") {
+            Section("Dash Cluster display") {
+                Toggle(isOn: Binding(
+                    get: { status.dashNavSettings.altitudeOnDashEnabled },
+                    set: { status.dashNavSettings.altitudeOnDashEnabled = $0 }
+                )) {
+                    Text("Show Altitude on dash")
+                }
+
                 Toggle(isOn: Binding(
                     get: { status.dashNavSettings.batteryOnDashEnabled },
                     set: { status.dashNavSettings.batteryOnDashEnabled = $0 }
                 )) {
-                    Text("Battery on dash")
+                    Text("Show phone battery on dash")
+                }
+
+                // The dash draws its own turn circle from the nav packet; we
+                // have no way to hide it separately yet.
+                Toggle(isOn: .constant(false)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show TBT circle")
+                        Text("Coming soon").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(true)
+
+                Toggle(isOn: Binding(
+                    get: { status.dashNavSettings.autoZoomEnabled },
+                    set: { status.dashNavSettings.autoZoomEnabled = $0 }
+                )) {
+                    Text("Auto Zoom")
                 }
 
                 Toggle(isOn: Binding(
@@ -280,9 +277,6 @@ struct StreamingView: View {
                 // build number in parentheses (what TestFlight shows), then
                 // the short git commit SHA stamped by tools/stamp-git-sha.sh.
                 LabeledContent("Version", value: "\(status.buildVersion) (\(status.buildNumber)) · \(status.buildCommitSHA)")
-                Link(destination: URL(string: "https://github.com/kolaCZek/TripperDashPlusPlus/issues/new")!) {
-                    Label("Report a bug", systemImage: "ladybug")
-                }
                 Button {
                     showPermissions = true
                 } label: {

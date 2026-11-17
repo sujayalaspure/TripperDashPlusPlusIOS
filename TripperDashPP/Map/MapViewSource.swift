@@ -156,6 +156,12 @@ final class MapViewSource: NSObject, FrameSource {
     fileprivate var tripIs24Hour = true
     /// Live phone battery, read at draw time. Set once by `AppStatus`.
     var phoneBatteryProvider: (@MainActor () -> (pct: Int, charging: Bool)?)?
+    /// Whether the altitude box is on (user setting). nil = off.
+    var altitudeEnabledProvider: (@MainActor () -> Bool)?
+    /// Whether speed/turn auto-zoom is on (user setting). nil = on.
+    var autoZoomProvider: (@MainActor () -> Bool)?
+    /// Zoom held when auto-zoom is off (the ~60 km/h value).
+    fileprivate static let fixedZoom: CGFloat = 1.4
     /// Call badge state (see `setCallState`).
     fileprivate var callBadge: CallBadge?
     fileprivate var callBadgeUntil: Date?
@@ -1951,6 +1957,8 @@ extension MapViewSource {
     /// Tuned up from the original 0.6–1.5 range on rider feedback
     /// (2026-06: "city map is too zoomed out, hard to see where to go").
     private func targetZoom(forSpeedMPS speed: Double) -> CGFloat {
+        // Auto-zoom off: hold a fixed zoom; only the manual bias moves it.
+        if autoZoomProvider?() == false { return Self.fixedZoom * userZoomBias }
         guard speed >= 0 else { return currentZoom }
         let kmh = speed * 3.6
         // slope: (0.8 - 2.0) / 130 = -0.00923 per km/h
@@ -2412,6 +2420,13 @@ extension MapViewSource {
     fileprivate static let callBoxSize = CGSize(width: 36, height: 24)
     fileprivate static let infoGap: CGFloat = 6
 
+    /// GPS altitude in whole metres, or nil when the setting is off or there
+    /// is no fix yet.
+    fileprivate var altitudeMeters: Int? {
+        guard altitudeEnabledProvider?() == true, let f = lastFix else { return nil }
+        return Int(f.altitude.rounded())
+    }
+
     /// The speed-limit sign (or average-speed panel) owns the bottom-right
     /// corner while drawn. When neither is, the box stack drops to the
     /// bottom margin so no gap is left where the sign would be.
@@ -2428,15 +2443,17 @@ extension MapViewSource {
     }
 
     /// Items stacked bottom-up: ETA, battery, call. Each present only when it has something to show.
-    fileprivate func infoStackLayout() -> (eta: CGRect?, battery: CGRect?, call: CGRect?, top: CGFloat, right: CGFloat)? {
+    fileprivate func infoStackLayout() -> (eta: CGRect?, battery: CGRect?, altitude: CGRect?, call: CGRect?, top: CGFloat, right: CGFloat)? {
         let hasEta = tripEtaDate != nil
         let battery = phoneBatteryProvider?()
+        let altitude = altitudeMeters
         let hasCall = liveCallBadge != nil
-        guard hasEta || battery != nil || hasCall else { return nil }
+        guard hasEta || battery != nil || altitude != nil || hasCall else { return nil }
 
         var heights: [CGFloat] = []
         if hasEta { heights.append(Self.etaBoxSize.height) }
         if battery != nil { heights.append(Self.batteryBoxHeight) }
+        if altitude != nil { heights.append(Self.batteryBoxHeight) }
         if hasCall { heights.append(Self.callBoxSize.height) }
         let total = heights.reduce(0, +) + Self.infoGap * CGFloat(heights.count - 1)
         let bottom = infoStackBottom
@@ -2453,8 +2470,9 @@ extension MapViewSource {
         }
         let etaRect = hasEta ? take(Self.etaBoxSize.width, Self.etaBoxSize.height) : nil
         let batRect = battery.map { b in take(b.charging ? 64 : 52, Self.batteryBoxHeight) }
+        let altRect = altitude.map { _ in take(72, Self.batteryBoxHeight) }
         let callRect = hasCall ? take(Self.callBoxSize.width, Self.callBoxSize.height) : nil
-        return (etaRect, batRect, callRect, top, right)
+        return (etaRect, batRect, altRect, callRect, top, right)
     }
 
     fileprivate var infoStackTop: CGFloat? { infoStackLayout()?.top }
@@ -2536,6 +2554,29 @@ extension MapViewSource {
                 text("\(battery.pct)%", size: 16, weight: .semibold,
                      color: low ? UIColor(red: 1, green: 0.35, blue: 0.3, alpha: 1) : white, in: rect)
             }
+        }
+
+        // Altitude — GPS height in metres, small up-arrow + "920 m".
+        if let rect = layout.altitude, let alt = altitudeMeters {
+            box(rect, fill: dark, border: false)
+            // Small solid up-arrow, drawn as a path (an SF Symbol blurs at this
+            // size after H.264). 9 x 11 px, left of the number.
+            let ax = rect.minX + 11, ay = rect.midY - 5.5
+            ctx.saveGState()
+            ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.9))
+            ctx.beginPath()
+            ctx.move(to: CGPoint(x: ax, y: ay))                 // tip
+            ctx.addLine(to: CGPoint(x: ax + 4.5, y: ay + 5.5))  // right head corner
+            ctx.addLine(to: CGPoint(x: ax + 1.8, y: ay + 5.5))  // into the shaft
+            ctx.addLine(to: CGPoint(x: ax + 1.8, y: ay + 11))
+            ctx.addLine(to: CGPoint(x: ax - 1.8, y: ay + 11))
+            ctx.addLine(to: CGPoint(x: ax - 1.8, y: ay + 5.5))
+            ctx.addLine(to: CGPoint(x: ax - 4.5, y: ay + 5.5))  // left head corner
+            ctx.closePath()
+            ctx.fillPath()
+            ctx.restoreGState()
+            var textRect = rect; textRect.origin.x += 12; textRect.size.width -= 12
+            text("\(alt) m", size: 15, weight: .semibold, color: white, in: textRect)
         }
 
         // ETA — "11 min" over the arrival clock time.

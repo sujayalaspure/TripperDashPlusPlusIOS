@@ -131,15 +131,15 @@ final class DashNavSettings {
 
     // MARK: - State
 
-    var units: UnitSystem = UnitSystem.deviceDefault {
+    var units: UnitSystem = .metric {
         didSet { persist() }
     }
 
-    var decimalSeparator: DecimalSeparator = DecimalSeparator.deviceDefault {
+    var decimalSeparator: DecimalSeparator = .period {
         didSet { persist() }
     }
 
-    var clockFormat: ClockFormat = ClockFormat.deviceDefault {
+    var clockFormat: ClockFormat = .h12 {
         didSet { persist() }
     }
 
@@ -275,6 +275,17 @@ final class DashNavSettings {
     /// yellow/red "jam at km 12" colouring is impossible on Apple and
     /// waits on the BYOK TomTom provider (see routing-engines.md).
     var progressBarEnabled: Bool = true {
+        didSet { persist() }
+    }
+
+    /// Show GPS altitude (metres) as a box on the dash map. Defaults ON.
+    var altitudeOnDashEnabled: Bool = true {
+        didSet { persist() }
+    }
+
+    /// Speed- and turn-based map zoom. When OFF the map holds a fixed zoom
+    /// (the rider's manual +/- nudges still apply). Defaults ON.
+    var autoZoomEnabled: Bool = true {
         didSet { persist() }
     }
 
@@ -487,6 +498,8 @@ final class DashNavSettings {
         var trafficRerouteSavingSeconds: TimeInterval?
         var progressBarEnabled: Bool?
         var batteryOnDashEnabled: Bool?
+        var autoZoomEnabled: Bool?
+        var altitudeOnDashEnabled: Bool?
     }
 
     init() {
@@ -497,9 +510,11 @@ final class DashNavSettings {
         guard let raw = UserDefaults.standard.data(forKey: Self.storeKey),
               let p = try? JSONDecoder().decode(Persisted.self, from: raw)
         else { return }
-        self.units = p.units
-        self.decimalSeparator = p.decimalSeparator
-        self.clockFormat = p.clockFormat
+        // Units, decimal separator and clock are fixed (no Settings UI):
+        // always Metric / Period / 12-hour, whatever an older build saved.
+        self.units = .metric
+        self.decimalSeparator = .period
+        self.clockFormat = .h12
         self.lookaheadEnabled = p.lookaheadEnabled ?? true
         self.lookaheadThresholdMeters = p.lookaheadThresholdMeters ?? 300
         self.callStateEnabled = p.callStateEnabled ?? true
@@ -514,6 +529,8 @@ final class DashNavSettings {
         self.trafficRerouteSavingSeconds = p.trafficRerouteSavingSeconds ?? 300
         self.progressBarEnabled = p.progressBarEnabled ?? true
         self.batteryOnDashEnabled = p.batteryOnDashEnabled ?? true
+        self.autoZoomEnabled = p.autoZoomEnabled ?? true
+        self.altitudeOnDashEnabled = p.altitudeOnDashEnabled ?? true
     }
 
     private func persist() {
@@ -534,7 +551,9 @@ final class DashNavSettings {
             trafficRerouteEnabled: trafficRerouteEnabled,
             trafficRerouteSavingSeconds: trafficRerouteSavingSeconds,
             progressBarEnabled: progressBarEnabled,
-            batteryOnDashEnabled: batteryOnDashEnabled
+            batteryOnDashEnabled: batteryOnDashEnabled,
+            autoZoomEnabled: autoZoomEnabled,
+            altitudeOnDashEnabled: altitudeOnDashEnabled
         )
         if let raw = try? JSONEncoder().encode(p) {
             UserDefaults.standard.set(raw, forKey: Self.storeKey)

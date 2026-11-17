@@ -46,33 +46,40 @@
         <label><input type="radio" name="mode" value="nav" checked> Navigating</label>
         <label><input type="radio" name="mode" value="free"> Free ride (no route)</label>
         <h2 style="margin-top:12px">Overlays</h2>
-        <label><input type="checkbox" id="bat" checked> Phone battery box</label>
+        <label><input type="checkbox" id="bat" checked> Battery on dash (setting)</label>
         <label><input type="checkbox" id="eta" checked> ETA + arrival time</label>
-        <label><input type="checkbox" id="limit" checked> Speed-limit sign</label>
+        <label><input type="checkbox" id="limit" checked> Speed-limit sign shown</label>
         <label><input type="checkbox" id="wx"> Weather pill</label>
         <label><input type="checkbox" id="notice"> Dash notice</label>
         <label><input type="checkbox" id="zoom"> Zoom indicator</label>
-        <label><input type="checkbox" id="call"> Incoming call card</label>
+        <label style="display:block;padding:4px 0">Call badge
+          <select id="callst" style="margin-top:4px">
+            <option value="none">None</option>
+            <option value="ringing">Ringing (amber)</option>
+            <option value="active">Active (green)</option>
+            <option value="ended">Ended (red, hides after 5 s)</option>
+          </select></label>
         <label><input type="checkbox" id="guides"> Show guides (frame, visible circle)</label>
         <h2 style="margin-top:12px">Battery</h2>
         <select id="batval">
           <option value="89">89 %</option>
           <option value="55">55 %</option>
           <option value="15">15 % (low, red)</option>
-          <option value="100c">Charging</option>
+          <option value="100c">Charging (green bolt)</option>
         </select>
       </div>
       <div class="panel legend" style="margin-top:14px">
         <h2>Who draws what</h2>
         <ul>
-          <li><b>App (in the video):</b> map, route line, heading puck, battery + ETA boxes, speed-limit sign, weather pill, notice, zoom badge.</li>
-          <li><b>Dash itself:</b> turn card (disc, bottom-left), incoming-call card, gold status band, speedometer, odometer.</li>
+          <li><b>App (in the video):</b> map, route line, heading puck, ETA / battery / call boxes, speed-limit sign, weather pill, notice pill, zoom badge.</li>
+          <li><b>Dash itself:</b> turn card (disc, bottom-left), gold status band, speedometer, odometer.</li>
+          <li><b>Stack:</b> ETA, battery and call boxes stack from the bottom. With no speed sign they drop to the bottom margin instead of leaving a gap.</li>
         </ul>
       </div>
     </div>
   </div>
 
-  <p class="note">Positions follow the code and the measured visible area (circle centre 262,263 r 264; turn card disc centre 79,228 r 68). The map tiles, glyphs and fonts here are stand-ins, not pixel-exact. Heading puck height and the zoom badge spot are approximate. Not a substitute for a photo of the real dash.</p>
+  <p class="note">The call badge and notice pill follow the app code (small boxes, no caller name). Positions follow the code and the measured visible area (circle centre 262,263 r 264; turn card disc centre 79,228 r 68). The map tiles, glyphs and fonts here are stand-ins, not pixel-exact. Heading puck height and the zoom badge spot are approximate. Not a substitute for a photo of the real dash.</p>
 </main>
 
 <script>
@@ -142,26 +149,63 @@ function render() {
   el('circle', { cx: 263, cy: 210, r: 11, fill: '#2a6df4' }, pc);
   el('path', { d: 'M263 202 L270 216 L263 212 L256 216Z', fill: '#fff' }, pc);
 
-  // ----- battery + ETA boxes (right edge) -----
-  if ($('bat').checked) {
-    const x = 442, y = 146, w = 52, h = 24;
-    el('rect', { x, y, width: w, height: h, rx: 8, fill: '#121214' }, f);
-    const low = pct <= 20 && !charging;
-    const col = low ? '#ff5a4d' : charging ? '#73f280' : '#fff';
-    el('text', { x: x + w / 2, y: y + 17, 'text-anchor': 'middle', 'font-size': 16, 'font-weight': 600, fill: col,
-      'font-family': 'Helvetica,Arial' }, f, (charging ? 100 : pct) + '%');
-  }
-  if (nav && $('eta').checked) {
-    const x = 424, y = 176, w = 70, h = 44;
-    el('rect', { x, y, width: w, height: h, rx: 8, fill: '#121214', stroke: 'rgba(255,255,255,.85)', 'stroke-width': 1.5 }, f);
-    el('text', { x: x + w / 2, y: y + 20, 'text-anchor': 'middle', 'font-size': 17, 'font-weight': 700, fill: '#fff',
-      'font-family': 'Helvetica,Arial' }, f, '11 min');
-    el('text', { x: x + w / 2, y: y + 37, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 500, fill: '#d8d8d8',
-      'font-family': 'Helvetica,Arial' }, f, '9:27 am');
+  // ----- right-edge stack: ETA, battery, call (bottom-up) -----
+  const signOn = $('limit').checked;
+  const call = $('callst').value;
+  const hasEta = nav && $('eta').checked, hasBat = $('bat').checked, hasCall = call !== 'none';
+  const items = [];
+  if (hasEta) items.push(['eta', 44]);
+  if (hasBat) items.push(['bat', 24]);
+  if (hasCall) items.push(['call', 24]);
+  const visUpper = (minY, maxY) => {
+    const dy = Math.max(Math.abs(minY - 263), Math.abs(maxY - 263));
+    return 262 + Math.sqrt(Math.max(0, 260 * 260 - dy * dy));
+  };
+  const bottom = signOn ? 300 - 12 - 62 - 6 : 300 - 12;
+  const gap = 6;
+  let top = null;
+  if (items.length) {
+    top = bottom - items.reduce((a, i) => a + i[1], 0) - gap * (items.length - 1);
+    const right = Math.min(514, visUpper(top, bottom));
+    let y = bottom;
+    const rects = {};
+    items.forEach(([k, h]) => {
+      y -= h;
+      const w = k === 'eta' ? 70 : k === 'call' ? 36 : (charging ? 64 : 52);
+      rects[k] = { x: right - w, y, w, h };
+      y -= gap;
+    });
+    const T = (x, y, t, size, weight, fill, anchor = 'middle') =>
+      el('text', { x, y, 'text-anchor': anchor, 'font-size': size, 'font-weight': weight, fill, 'font-family': 'Helvetica,Arial' }, f, t);
+
+    if (rects.eta) {
+      const r = rects.eta;
+      el('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8, fill: '#121214', stroke: 'rgba(255,255,255,.85)', 'stroke-width': 1.5 }, f);
+      T(r.x + r.w / 2, r.y + 20, '11 min', 17, 700, '#fff');
+      T(r.x + r.w / 2, r.y + 37, '9:27 am', 13, 500, '#d8d8d8');
+    }
+    if (rects.bat) {
+      const r = rects.bat;
+      el('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8, fill: '#121214' }, f);
+      if (charging) {
+        // green lightning bolt + white percent
+        el('path', { d: `M${r.x + 17} ${r.y + 4} L${r.x + 9} ${r.y + 14} L${r.x + 14} ${r.y + 14} L${r.x + 12} ${r.y + 21} L${r.x + 21} ${r.y + 10} L${r.x + 16} ${r.y + 10}Z`, fill: '#4de666' }, f);
+        T(r.x + r.w / 2 + 6, r.y + 17, '100%', 16, 600, '#fff');
+      } else {
+        T(r.x + r.w / 2, r.y + 17, pct + '%', 16, 600, pct <= 20 ? '#ff5a4d' : '#fff');
+      }
+    }
+    if (rects.call) {
+      const r = rects.call;
+      const col = { ringing: '#f59e14', active: '#29b852', ended: '#e12e2e' }[call];
+      el('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8, fill: col }, f);
+      // phone handset icon
+      el('path', { d: `M${r.x + 12} ${r.y + 7} q-1.5 8 6 14 l3.5 -3.5 l-3.5 -3 l-2 1.6 q-2.4 -2 -3 -5 l2 -1.6z`, fill: '#fff', transform: `translate(${r.w / 2 - 17} 0)` }, f);
+    }
   }
 
   // ----- speed-limit sign (bottom-right) -----
-  if ($('limit').checked) {
+  if (signOn) {
     const cx = 483, cy = 257;
     el('circle', { cx, cy, r: 31, fill: '#fff' }, f);
     el('circle', { cx, cy, r: 31 - 5, fill: 'none', stroke: '#db1f1f', 'stroke-width': 10 }, f);
@@ -169,21 +213,24 @@ function render() {
       'font-family': 'Helvetica,Arial' }, f, '50');
   }
 
-  // ----- weather pill (lifted above battery/ETA boxes) -----
+  // ----- weather pill (lifts above the sign and the box stack) -----
   if ($('wx').checked) {
-    const w = 150, h = 40, x = 466 - w, y = 102;
+    const signBump = signOn ? 62 + 8 : 0;
+    const boxBump = top !== null ? 300 - top + 4 - 12 : 0;
+    const h = 40, w = 150, y = 300 - 12 - h - Math.max(signBump, boxBump);
+    const x = Math.min(514, visUpper(y, y + h)) - w;
     el('rect', { x, y, width: w, height: h, rx: 9, fill: '#000', stroke: '#ff9a00', 'stroke-width': 1.5 }, f);
     el('circle', { cx: x + 20, cy: y + 20, r: 10, fill: '#ff9a00' }, f);
     el('text', { x: x + 20, y: y + 25, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 700, fill: '#000', 'font-family': 'Helvetica,Arial' }, f, '!');
     el('text', { x: x + 38, y: y + 26, 'font-size': 17, 'font-weight': 600, fill: '#fff', 'font-family': 'Helvetica,Arial' }, f, 'Rain 12 km');
   }
 
-  // ----- notice (above turn card, centred on glass) -----
+  // ----- notice: small pill, top centre -----
   if ($('notice').checked) {
-    const cardH = 14 + 30 + 14, y = 228 - 68 - 4 - cardH, w = 232, x = 262 - w / 2;
-    el('rect', { x, y, width: w, height: cardH, rx: 12, fill: '#000', stroke: '#f5a000', 'stroke-width': 2 }, f);
-    el('path', { d: `M${x + 31} ${y + 15} L${x + 46} ${y + 41} L${x + 16} ${y + 41}Z`, fill: '#f5a000' }, f);
-    el('text', { x: x + 56, y: y + 40, 'font-size': 22, 'font-weight': 600, fill: '#fff', 'font-family': 'Helvetica,Arial' }, f, 'Weak GPS signal');
+    const text = "You've arrived", h = 26, y = 16, w = 12 + 8 + 7 + 94 + 12, x = 262 - w / 2;
+    el('rect', { x, y, width: w, height: h, rx: h / 2, fill: '#121214' }, f);
+    el('circle', { cx: x + 16, cy: y + h / 2, r: 4, fill: '#2a85f5' }, f);
+    el('text', { x: x + 12 + 8 + 7, y: y + 18, 'font-size': 13, 'font-weight': 600, fill: '#fff', 'font-family': 'Helvetica,Arial' }, f, text);
   }
 
   // ----- zoom badge (bottom-left, right of turn card) -----
@@ -217,16 +264,6 @@ function render() {
     el('text', { x: 79, y: 276, 'text-anchor': 'middle', 'font-size': 18, 'font-weight': 700, fill: '#222', 'font-family': 'Helvetica,Arial' }, tc, '450 m');
   }
 
-  // incoming-call card (dash-drawn, state only: no caller name)
-  if ($('call').checked) {
-    const c = el('g', {}, g);
-    el('rect', { x: 96, y: 96, width: 332, height: 150, rx: 18, fill: '#111214', stroke: '#e8e2d0', 'stroke-width': 3 }, c);
-    el('circle', { cx: 262, cy: 140, r: 22, fill: '#3bc45a' }, c);
-    el('path', { d: 'M254 133 q-2 14 12 26 l6 -6 l-7 -6 l-4 3 q-5 -4 -7 -9 l3 -4 l-6 -7z', fill: '#fff' }, c);
-    el('text', { x: 262, y: 195, 'text-anchor': 'middle', 'font-size': 24, 'font-weight': 600, fill: '#fff', 'font-family': 'Helvetica,Arial' }, c, 'Incoming call');
-    el('text', { x: 262, y: 224, 'text-anchor': 'middle', 'font-size': 13, fill: '#9a9a94', 'font-family': 'Helvetica,Arial' }, c, 'no caller name (iOS does not provide it)');
-  }
-
   // ---------- guides ----------
   if ($('guides').checked) {
     el('rect', { x: 0, y: 0, width: 526, height: 300, fill: 'none', stroke: '#ff3b6b', 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, svg);
@@ -237,7 +274,7 @@ function render() {
   }
 }
 
-['bat','eta','limit','wx','notice','zoom','call','guides','batval'].forEach(id => $(id).addEventListener('input', render));
+['bat','eta','limit','wx','notice','zoom','callst','guides','batval'].forEach(id => $(id).addEventListener('input', render));
 document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('input', render));
 render();
 </script>

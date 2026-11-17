@@ -888,6 +888,9 @@ struct MapPickerView: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
             }
+            QuickSettingsBar()
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
             NavigationHUD(
                 isReconnecting: status.bikeLink.state == .reconnecting,
                 dashUnresponsive: status.bikeLink.dashUnresponsive,
@@ -957,6 +960,9 @@ struct MapPickerView: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
             }
+            QuickSettingsBar()
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
             FreeRideHUD(
                 stats: status.rideStats.stats,
                 imperial: status.dashNavSettings.units == .imperial,
@@ -1722,6 +1728,49 @@ private struct HoldToConfirmButton: View {
             .accessibilityLabel(spokenTitle)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { action() }
+    }
+}
+
+// MARK: - Quick settings (voice + map style)
+
+/// Two one-tap controls for use while riding: spoken guidance on/off and the
+/// map palette (Light / Dark / Auto). Same underlying settings as the
+/// Settings sheet, so the two stay in sync.
+private struct QuickSettingsBar: View {
+    @Environment(AppStatus.self) private var status
+
+    var body: some View {
+        let voiceOn = status.dashNavSettings.voiceEnabled
+        HStack(spacing: 10) {
+            Button {
+                let on = !voiceOn
+                status.dashNavSettings.voiceEnabled = on
+                // Keep the synth's gate in step; toggling off stops any sentence in flight.
+                status.voiceNavigator.enabled = on
+                if !on { status.voiceNavigator.stop() }
+            } label: {
+                Label("Voice", systemImage: voiceOn ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(voiceOn ? Color.blue.opacity(0.18) : Color.gray.opacity(0.15), in: Capsule())
+                    .foregroundStyle(voiceOn ? Color.blue : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Spoken guidance")
+            .accessibilityValue(voiceOn ? "On" : "Off")
+
+            Picker("Map style", selection: Binding(
+                get: { status.mapStyleSettings.mode },
+                // Goes through setMapStyleMode so the dash map restyles at once.
+                set: { status.setMapStyleMode($0) }
+            )) {
+                Text("Light").tag(MapStyleSettings.Mode.light)
+                Text("Dark").tag(MapStyleSettings.Mode.dark)
+                Text("Auto").tag(MapStyleSettings.Mode.auto)
+            }
+            .pickerStyle(.segmented)
+        }
     }
 }
 

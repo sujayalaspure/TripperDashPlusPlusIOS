@@ -405,6 +405,8 @@ final class AppStatus {
         if let s = _mapViewSource { return s }
         let s = MapViewSource(locationService: locationService,
                               activeNavigator: activeNavigator)
+        s.altitudeEnabledProvider = { [weak self] in self?.dashNavSettings.altitudeOnDashEnabled ?? true }
+        s.autoZoomProvider = { [weak self] in self?.dashNavSettings.autoZoomEnabled ?? true }
         _mapViewSource = s
         return s
     }
