@@ -87,6 +87,8 @@ final class ActiveNavLoop {
 
     /// Same, for the wrong-way U-turn prompt.
     private var spokeUTurnForEpisode = false
+    /// Id of the last hairpin announced aloud (once per bend).
+    private var spokenHairpinId: String?
 
     /// Pure "when to warn about a speed camera" decision state. Fires the
     /// spoken camera callout ONCE per camera as the rider closes in on it
@@ -230,6 +232,7 @@ final class ActiveNavLoop {
         // frame is a clean map. Speed-limit config is still refreshed so
         // the limit sign / camera pills keep tracking the rider's settings.
         guard nav.isNavigating else {
+            mapSource?.setHairpin(nil)
             mapSource?.setNavOverlay(nil)
             mapSource?.setRideProgress(nil)
             mapSource?.setTripEta(nil, is24Hour: true)   // free-ride / arrived → no ETA box
@@ -562,6 +565,7 @@ final class ActiveNavLoop {
             // using this tick's `sectionTracker.endPoints`.
             updateSpeedSection()
             emitCameraVoice()
+            updateHairpin(nav: nav)
         }
 
         // Keep the speed-limit sign's policy in sync with settings every
@@ -639,6 +643,28 @@ final class ActiveNavLoop {
             return
         }
         voice.speak(phrase, language: lang.rawValue, priority: .maneuver)
+    }
+
+    // MARK: - Hairpin warning
+
+    /// Look for a hairpin on the route ahead; show the pill within 400 m and
+    /// speak once per bend when it is within 250 m.
+    private func updateHairpin(nav: ActiveNavigator) {
+        guard settings.hairpinAlertsEnabled, let fix = location?.lastFix else {
+            mapSource?.setHairpin(nil)
+            return
+        }
+        let h = HairpinDetector.next(rider: fix.coordinate,
+                                     ahead: nav.routeAheadCoordinates,
+                                     lookaheadMeters: 400)
+        mapSource?.setHairpin(h)
+        guard let h else { return }
+        if h.distanceMeters <= 250, spokenHairpinId != h.id,
+           let voice, settings.voiceEnabled {
+            spokenHairpinId = h.id
+            voice.speak(VoicePhrase.hairpin(isRight: h.isRight),
+                        language: "en-US", priority: .maneuver)
+        }
     }
 
     // MARK: - Speed-camera voice

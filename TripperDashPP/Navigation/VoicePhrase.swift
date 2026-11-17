@@ -126,6 +126,12 @@ enum VoicePhrase {
     static func speedCamera(_ language: VoiceLanguage) -> String {
         language.lexicon.speedCamera
     }
+
+    /// Hairpin warning. English only for now; the voice is asked for English
+    /// so the sentence is not read with another language's accent.
+    static func hairpin(isRight: Bool) -> String {
+        isRight ? "Hairpin bend right ahead" : "Hairpin bend left ahead"
+    }
 }
 
 // MARK: - Lexicon

@@ -156,6 +156,8 @@ final class MapViewSource: NSObject, FrameSource {
     fileprivate var tripIs24Hour = true
     /// Live phone battery, read at draw time. Set once by `AppStatus`.
     var phoneBatteryProvider: (@MainActor () -> (pct: Int, charging: Bool)?)?
+    /// Hairpin ahead, pushed by the nav loop (nil = none / feature off).
+    fileprivate var hairpin: Hairpin?
     /// Whether the altitude box is on (user setting). nil = off.
     var altitudeEnabledProvider: (@MainActor () -> Bool)?
     /// Whether speed/turn auto-zoom is on (user setting). nil = on.
@@ -1318,6 +1320,9 @@ extension MapViewSource {
         // app. Drawn above the map and the pills, below the notice card.
         drawInfoBoxes(into: ctx)
 
+        // Hairpin warning pill, under the notice slot.
+        drawHairpinPill(into: ctx)
+
         // Dash notice ("You've arrived" and friends) — drawn LAST so it sits
         // above every map overlay, upper middle, transform-independent.
         // Self-expiring (time-based); no-op when no notice is active.
@@ -2381,6 +2386,90 @@ extension MapViewSource {
         /// Where the upcoming maneuver is: the on-route turn arrow is drawn
         /// there. nil = no arrow (straight on, arrival, recalculating …).
         var maneuverNode: CLLocationCoordinate2D? = nil
+    }
+
+    // MARK: - Hairpin pill
+
+    func setHairpin(_ h: Hairpin?) { hairpin = h }
+
+    /// "Hairpin left 180 m" pill, top-centre under the notice pill. Amber,
+    /// red once the bend is within 100 m.
+    fileprivate func drawHairpinPill(into ctx: CGContext) {
+        guard let h = hairpin else { return }
+        let metres = max(10, Int((h.distanceMeters / 10).rounded()) * 10)
+        let label = "Hairpin \(h.isRight ? "right" : "left") \(metres) m"
+        let accent = h.distanceMeters <= 100
+            ? CGColor(red: 0.95, green: 0.25, blue: 0.22, alpha: 1)
+            : CGColor(red: 1.0, green: 0.62, blue: 0.0, alpha: 1)
+
+        let glyph: CGFloat = 18, gap: CGFloat = 7, padX: CGFloat = 11, hgt: CGFloat = 30
+        let arrowW: CGFloat = 18   // direction arrow after the text
+        var fontSize: CGFloat = 15
+        let font = UIFont.systemFont(ofSize: fontSize, weight: Self.overlayTextWeight)
+        var textW = (label as NSString).size(withAttributes: [.font: font]).width.rounded(.up)
+        let originY: CGFloat = 50
+        let span = Self.visibleSpan(minY: originY, maxY: originY + hgt)
+        let maxTextW = span.upperBound - span.lowerBound - (padX * 2 + glyph + gap * 2 + arrowW)
+        if textW > maxTextW { fontSize *= maxTextW / textW; textW = maxTextW }
+        let w = padX * 2 + glyph + gap * 2 + textW + arrowW
+        let card = CGRect(x: Self.visibleCenter.x - w / 2, y: originY, width: w, height: hgt)
+
+        ctx.saveGState()
+        let path = CGPath(roundedRect: card, cornerWidth: 10, cornerHeight: 10, transform: nil)
+        ctx.addPath(path)
+        ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        ctx.fillPath()
+        ctx.addPath(path)
+        ctx.setStrokeColor(accent)
+        ctx.setLineWidth(1.8)
+        ctx.strokePath()
+
+        // U-turn glyph: a stroked "U" with an arrowhead on the exit side,
+        // mirrored for right-hand bends.
+        let gx = card.minX + padX, gy = card.midY - glyph / 2
+        ctx.translateBy(x: gx, y: gy)
+        if h.isRight { ctx.translateBy(x: glyph, y: 0); ctx.scaleBy(x: -1, y: 1) }
+        ctx.setStrokeColor(accent)
+        ctx.setLineWidth(2.6)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.beginPath()
+        ctx.move(to: CGPoint(x: glyph * 0.78, y: glyph))               // enters from below, right
+        ctx.addLine(to: CGPoint(x: glyph * 0.78, y: glyph * 0.38))
+        ctx.addArc(center: CGPoint(x: glyph * 0.50, y: glyph * 0.38), radius: glyph * 0.28,
+                   startAngle: 0, endAngle: .pi, clockwise: true)      // over the top
+        ctx.addLine(to: CGPoint(x: glyph * 0.22, y: glyph * 0.70))
+        ctx.strokePath()
+        ctx.setFillColor(accent)
+        ctx.beginPath()
+        ctx.move(to: CGPoint(x: glyph * 0.22, y: glyph * 0.98))        // arrowhead pointing down
+        ctx.addLine(to: CGPoint(x: glyph * 0.04, y: glyph * 0.66))
+        ctx.addLine(to: CGPoint(x: glyph * 0.40, y: glyph * 0.66))
+        ctx.closePath()
+        ctx.fillPath()
+        ctx.restoreGState()
+
+        Self.drawText(label, in: ctx,
+                      at: CGPoint(x: card.minX + padX + glyph + gap, y: card.midY - fontSize / 2 - 1),
+                      width: textW + 4, fontSize: fontSize, bold: true)
+
+        // Left / right arrow after the text, in white.
+        let ax = card.maxX - padX - arrowW, cy = card.midY
+        ctx.saveGState()
+        if !h.isRight { ctx.translateBy(x: ax + arrowW, y: 0); ctx.scaleBy(x: -1, y: 1) }
+        else { ctx.translateBy(x: ax, y: 0) }
+        ctx.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.setLineWidth(2.6)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.beginPath()
+        ctx.move(to: CGPoint(x: 1, y: cy))
+        ctx.addLine(to: CGPoint(x: arrowW - 2, y: cy))              // shaft
+        ctx.move(to: CGPoint(x: arrowW - 8, y: cy - 6))
+        ctx.addLine(to: CGPoint(x: arrowW - 1.5, y: cy))
+        ctx.addLine(to: CGPoint(x: arrowW - 8, y: cy + 6))          // head
+        ctx.strokePath()
+        ctx.restoreGState()
     }
 
     // MARK: - Battery, ETA and call boxes

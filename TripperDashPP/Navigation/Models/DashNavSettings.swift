@@ -278,6 +278,12 @@ final class DashNavSettings {
         didSet { persist() }
     }
 
+    /// Warn about hairpin bends ahead: a pill on the dash map and a spoken
+    /// alert. Defaults ON.
+    var hairpinAlertsEnabled: Bool = true {
+        didSet { persist() }
+    }
+
     /// Show GPS altitude (metres) as a box on the dash map. Defaults ON.
     var altitudeOnDashEnabled: Bool = true {
         didSet { persist() }
@@ -500,6 +506,7 @@ final class DashNavSettings {
         var batteryOnDashEnabled: Bool?
         var autoZoomEnabled: Bool?
         var altitudeOnDashEnabled: Bool?
+        var hairpinAlertsEnabled: Bool?
     }
 
     init() {
@@ -531,6 +538,7 @@ final class DashNavSettings {
         self.batteryOnDashEnabled = p.batteryOnDashEnabled ?? true
         self.autoZoomEnabled = p.autoZoomEnabled ?? true
         self.altitudeOnDashEnabled = p.altitudeOnDashEnabled ?? true
+        self.hairpinAlertsEnabled = p.hairpinAlertsEnabled ?? true
     }
 
     private func persist() {
@@ -553,7 +561,8 @@ final class DashNavSettings {
             progressBarEnabled: progressBarEnabled,
             batteryOnDashEnabled: batteryOnDashEnabled,
             autoZoomEnabled: autoZoomEnabled,
-            altitudeOnDashEnabled: altitudeOnDashEnabled
+            altitudeOnDashEnabled: altitudeOnDashEnabled,
+            hairpinAlertsEnabled: hairpinAlertsEnabled
         )
         if let raw = try? JSONEncoder().encode(p) {
             UserDefaults.standard.set(raw, forKey: Self.storeKey)

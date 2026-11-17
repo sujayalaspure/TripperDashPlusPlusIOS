@@ -180,6 +180,13 @@ struct StreamingView: View {
                 }
 
                 Toggle(isOn: Binding(
+                    get: { status.dashNavSettings.hairpinAlertsEnabled },
+                    set: { status.dashNavSettings.hairpinAlertsEnabled = $0 }
+                )) {
+                    Text("Hairpin alerts")
+                }
+
+                Toggle(isOn: Binding(
                     get: { status.dashNavSettings.callStateEnabled },
                     set: { status.dashNavSettings.callStateEnabled = $0 }
                 )) {

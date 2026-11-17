@@ -268,3 +268,88 @@ enum ManeuverGeometry {
         return 2 * R * asin(min(1, sqrt(h)))
     }
 }
+
+
+// MARK: - Hairpin detection
+
+/// A hairpin bend found on the route ahead.
+nonisolated struct Hairpin: Equatable, Sendable {
+    /// Path distance (m) from the rider to where the bend starts.
+    let distanceMeters: Double
+    /// Right-hand bend when true.
+    let isRight: Bool
+    /// Stable-ish identity (start point rounded to ~11 m) so a bend is
+    /// announced once even when the route is re-sliced every tick.
+    let id: String
+}
+
+/// Finds the next hairpin on a route polyline: a bend that turns the rider
+/// through at least `minTurnDegrees` within `windowMeters` of road. Pure
+/// geometry; Apple route steps often fold a hairpin into a longer step, so
+/// this scans the line itself rather than the step list.
+nonisolated enum HairpinDetector {
+    static let minTurnDegrees = 120.0
+    static let windowMeters = 70.0
+
+    static func next(rider: CLLocationCoordinate2D,
+                     ahead: [CLLocationCoordinate2D],
+                     lookaheadMeters: Double) -> Hairpin? {
+        // Path from the rider, dropping vertices closer than 2 m (noise).
+        var pts: [CLLocationCoordinate2D] = [rider]
+        for c in ahead {
+            if let last = pts.last, meters(last, c) < 2 { continue }
+            pts.append(c)
+        }
+        guard pts.count >= 3 else { return nil }
+
+        // Cumulative distance and per-segment bearing.
+        var dist = [0.0]
+        var bearing: [Double] = []
+        for i in 1..<pts.count {
+            dist.append(dist[i - 1] + meters(pts[i - 1], pts[i]))
+            bearing.append(bearingDeg(pts[i - 1], pts[i]))
+        }
+        // Signed turn at vertex i (1..<count-1), + = right.
+        var turn = [Double](repeating: 0, count: pts.count)
+        for i in 1..<(pts.count - 1) {
+            var d = bearing[i] - bearing[i - 1]
+            while d > 180 { d -= 360 }
+            while d < -180 { d += 360 }
+            turn[i] = d
+        }
+
+        var i = 1
+        while i < pts.count - 1, dist[i] <= lookaheadMeters {
+            var sum = 0.0
+            var j = i
+            var best: (sum: Double, end: Int)?
+            while j < pts.count - 1, dist[j] - dist[i] <= windowMeters {
+                sum += turn[j]
+                if abs(sum) >= minTurnDegrees { best = (sum, j); break }
+                j += 1
+            }
+            if let best {
+                let start = pts[i]
+                let id = String(format: "%.4f,%.4f", start.latitude, start.longitude)
+                return Hairpin(distanceMeters: dist[i], isRight: best.sum > 0, id: id)
+            }
+            i += 1
+        }
+        return nil
+    }
+
+    private static func meters(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+        let r = 6_371_000.0
+        let dLat = (b.latitude - a.latitude) * .pi / 180
+        let dLon = (b.longitude - a.longitude) * .pi / 180 * cos(a.latitude * .pi / 180)
+        return r * (dLat * dLat + dLon * dLon).squareRoot()
+    }
+
+    private static func bearingDeg(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+        let lat1 = a.latitude * .pi / 180, lat2 = b.latitude * .pi / 180
+        let dLon = (b.longitude - a.longitude) * .pi / 180
+        let y = sin(dLon) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        return atan2(y, x) * 180 / .pi
+    }
+}
