@@ -46,15 +46,18 @@ import CallKit
 @MainActor
 final class CallStateObserver: NSObject {
 
-    private let link: BikeLink
+    /// Receives every call-state change. The app draws a small phone badge on
+    /// the streamed map from it; the OEM full-size call card (K1G `05 21`) is
+    /// no longer sent.
+    private let onState: @MainActor (K1GPacket.CallState) -> Void
     private let log = Logger(subsystem: "eu.kolaczek.tripperdashpp", category: "CallState")
 
     #if canImport(CallKit)
     private let observer = CXCallObserver()
     #endif
 
-    init(link: BikeLink) {
-        self.link = link
+    init(onState: @escaping @MainActor (K1GPacket.CallState) -> Void) {
+        self.onState = onState
         super.init()
     }
 
@@ -106,8 +109,8 @@ extension CallStateObserver: CXCallObserverDelegate {
             hasConnected: call.hasConnected,
             isOutgoing: call.isOutgoing
         )
-        Task { @MainActor [link] in
-            await link.sendCallState(state)
+        Task { @MainActor [weak self] in
+            self?.onState(state)
         }
     }
 }

@@ -278,6 +278,11 @@ final class DashNavSettings {
         didSet { persist() }
     }
 
+    /// Show the phone battery box on the dash map. Defaults ON.
+    var batteryOnDashEnabled: Bool = true {
+        didSet { persist() }
+    }
+
     /// Tolerance (km/h) the rider must EXCEED the posted limit by before
     /// the `.overOnly` mode lights the sign. A few km/h of slop keeps the
     /// sign from flickering on/off as GPS speed jitters right at the limit
@@ -481,6 +486,7 @@ final class DashNavSettings {
         var trafficRerouteEnabled: Bool?
         var trafficRerouteSavingSeconds: TimeInterval?
         var progressBarEnabled: Bool?
+        var batteryOnDashEnabled: Bool?
     }
 
     init() {
@@ -507,6 +513,7 @@ final class DashNavSettings {
         self.trafficRerouteEnabled = p.trafficRerouteEnabled ?? false
         self.trafficRerouteSavingSeconds = p.trafficRerouteSavingSeconds ?? 300
         self.progressBarEnabled = p.progressBarEnabled ?? true
+        self.batteryOnDashEnabled = p.batteryOnDashEnabled ?? true
     }
 
     private func persist() {
@@ -526,7 +533,8 @@ final class DashNavSettings {
             voiceSpeedCameraEnabled: voiceSpeedCameraEnabled,
             trafficRerouteEnabled: trafficRerouteEnabled,
             trafficRerouteSavingSeconds: trafficRerouteSavingSeconds,
-            progressBarEnabled: progressBarEnabled
+            progressBarEnabled: progressBarEnabled,
+            batteryOnDashEnabled: batteryOnDashEnabled
         )
         if let raw = try? JSONEncoder().encode(p) {
             UserDefaults.standard.set(raw, forKey: Self.storeKey)

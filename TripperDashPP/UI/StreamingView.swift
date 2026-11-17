@@ -176,6 +176,13 @@ struct StreamingView: View {
 
             Section("Notifications") {
                 Toggle(isOn: Binding(
+                    get: { status.dashNavSettings.batteryOnDashEnabled },
+                    set: { status.dashNavSettings.batteryOnDashEnabled = $0 }
+                )) {
+                    Text("Battery on dash")
+                }
+
+                Toggle(isOn: Binding(
                     get: { status.dashNavSettings.callStateEnabled },
                     set: { status.dashNavSettings.callStateEnabled = $0 }
                 )) {

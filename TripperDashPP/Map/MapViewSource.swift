@@ -156,6 +156,9 @@ final class MapViewSource: NSObject, FrameSource {
     fileprivate var tripIs24Hour = true
     /// Live phone battery, read at draw time. Set once by `AppStatus`.
     var phoneBatteryProvider: (@MainActor () -> (pct: Int, charging: Bool)?)?
+    /// Call badge state (see `setCallState`).
+    fileprivate var callBadge: CallBadge?
+    fileprivate var callBadgeUntil: Date?
 
     /// Latest ride-relevant weather alert, pushed in by the nav pump from
     /// `WeatherAlertService`. `nil` → no pill drawn (clear weather, the
@@ -2372,26 +2375,89 @@ extension MapViewSource {
         var maneuverNode: CLLocationCoordinate2D? = nil
     }
 
-    // MARK: - Battery + ETA boxes
+    // MARK: - Battery, ETA and call boxes
 
-    /// Arrival time of the active route, or nil when not navigating. The
-    /// remaining minutes are derived from it at draw time, so the box
-    /// counts down every frame without another push.
     func setTripEta(_ date: Date?, is24Hour: Bool) {
         tripEtaDate = date
         tripIs24Hour = is24Hour
     }
 
-    /// Top of the box stack (px) and its bottom, which stays above the
-    /// speed-limit sign row (sign top = 300 - 12 - 62 = 226).
-    fileprivate static let infoBoxesTop: CGFloat = 146
-    fileprivate static let infoBoxesBottom: CGFloat = 220
-    fileprivate static let batteryBoxSize = CGSize(width: 52, height: 24)
-    fileprivate static let etaBoxSize = CGSize(width: 70, height: 44)
+    /// Call badge state. Ringing (amber) and active (green) stay up for the
+    /// call; when a call that was up ends, the badge turns red for 5 s, then
+    /// hides. `.none` with no call up does nothing.
+    enum CallBadge { case ringing, active, ended }
 
-    fileprivate var shouldDrawInfoBoxes: Bool {
-        tripEtaDate != nil || phoneBatteryProvider?() != nil
+    func setCallState(_ state: K1GPacket.CallState) {
+        switch state {
+        case .incoming, .outgoing: callBadge = .ringing; callBadgeUntil = nil
+        case .active:              callBadge = .active;  callBadgeUntil = nil
+        case .none:
+            guard let current = callBadge, current != .ended else { return }
+            callBadge = .ended
+            callBadgeUntil = Date().addingTimeInterval(5)
+        @unknown default: break
+        }
     }
+
+    /// The live badge, or nil once an ended badge has timed out.
+    fileprivate var liveCallBadge: CallBadge? {
+        if callBadge == .ended, let until = callBadgeUntil, Date() >= until {
+            callBadge = nil; callBadgeUntil = nil
+        }
+        return callBadge
+    }
+
+    fileprivate static let etaBoxSize = CGSize(width: 70, height: 44)
+    fileprivate static let batteryBoxHeight: CGFloat = 24
+    fileprivate static let callBoxSize = CGSize(width: 36, height: 24)
+    fileprivate static let infoGap: CGFloat = 6
+
+    /// The speed-limit sign (or average-speed panel) owns the bottom-right
+    /// corner while drawn. When neither is, the box stack drops to the
+    /// bottom margin so no gap is left where the sign would be.
+    fileprivate var signSlotOccupied: Bool {
+        (shouldDrawSpeedLimit && currentLimitKmh != nil) || speedSection != nil
+    }
+
+    /// Bottom edge of the stack: above the sign row (sign top = 226) or at
+    /// the frame's bottom margin.
+    fileprivate var infoStackBottom: CGFloat {
+        signSlotOccupied
+            ? frameSize.height - Self.speedLimitSignMargin - Self.speedLimitSignDiameter - 6
+            : frameSize.height - Self.speedLimitSignMargin
+    }
+
+    /// Items stacked bottom-up: ETA, battery, call. Each present only when it has something to show.
+    fileprivate func infoStackLayout() -> (eta: CGRect?, battery: CGRect?, call: CGRect?, top: CGFloat, right: CGFloat)? {
+        let hasEta = tripEtaDate != nil
+        let battery = phoneBatteryProvider?()
+        let hasCall = liveCallBadge != nil
+        guard hasEta || battery != nil || hasCall else { return nil }
+
+        var heights: [CGFloat] = []
+        if hasEta { heights.append(Self.etaBoxSize.height) }
+        if battery != nil { heights.append(Self.batteryBoxHeight) }
+        if hasCall { heights.append(Self.callBoxSize.height) }
+        let total = heights.reduce(0, +) + Self.infoGap * CGFloat(heights.count - 1)
+        let bottom = infoStackBottom
+        let top = bottom - total
+        let right = min(frameSize.width - Self.speedLimitSignMargin,
+                        Self.visibleSpan(minY: top, maxY: bottom).upperBound)
+
+        var y = bottom
+        func take(_ w: CGFloat, _ h: CGFloat) -> CGRect {
+            y -= h
+            let r = CGRect(x: right - w, y: y, width: w, height: h)
+            y -= Self.infoGap
+            return r
+        }
+        let etaRect = hasEta ? take(Self.etaBoxSize.width, Self.etaBoxSize.height) : nil
+        let batRect = battery.map { b in take(b.charging ? 64 : 52, Self.batteryBoxHeight) }
+        let callRect = hasCall ? take(Self.callBoxSize.width, Self.callBoxSize.height) : nil
+        return (etaRect, batRect, callRect, top, right)
+    }
+
+    fileprivate var infoStackTop: CGFloat? { infoStackLayout()?.top }
 
     fileprivate static let arrivalFormatter12: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "h:mm a"
@@ -2402,19 +2468,15 @@ extension MapViewSource {
     }()
 
     fileprivate func drawInfoBoxes(into ctx: CGContext) {
+        guard let layout = infoStackLayout() else { return }
         let battery = phoneBatteryProvider?()
-        guard battery != nil || tripEtaDate != nil else { return }
-
-        let rightEdge = min(frameSize.width - Self.speedLimitSignMargin,
-                            Self.visibleSpan(minY: Self.infoBoxesTop,
-                                             maxY: Self.infoBoxesBottom).upperBound)
         let white = UIColor.white
 
-        func box(_ rect: CGRect, border: Bool) {
+        func box(_ rect: CGRect, fill: CGColor, border: Bool) {
             let path = CGPath(roundedRect: rect, cornerWidth: 8, cornerHeight: 8, transform: nil)
             ctx.saveGState()
             ctx.addPath(path)
-            ctx.setFillColor(CGColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1))
+            ctx.setFillColor(fill)
             ctx.fillPath()
             if border {
                 ctx.addPath(path)
@@ -2424,8 +2486,9 @@ extension MapViewSource {
             }
             ctx.restoreGState()
         }
+        let dark = CGColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1)
         func text(_ s: String, size: CGFloat, weight: UIFont.Weight, color: UIColor,
-                  centredIn rect: CGRect, yOffset: CGFloat = 0) {
+                  in rect: CGRect, yOffset: CGFloat = 0) {
             var font = UIFont.systemFont(ofSize: size, weight: weight)
             var sz = (s as NSString).size(withAttributes: [.font: font])
             let maxW = rect.width - 8
@@ -2439,31 +2502,51 @@ extension MapViewSource {
                 withAttributes: [.font: font, .foregroundColor: color])
             UIGraphicsPopContext()
         }
-
-        // Battery — top of the stack.
-        if let battery {
-            let sz = Self.batteryBoxSize
-            let rect = CGRect(x: rightEdge - sz.width, y: Self.infoBoxesTop,
-                              width: sz.width, height: sz.height)
-            box(rect, border: false)
-            let low = battery.pct <= 20 && !battery.charging
-            let color: UIColor = low ? UIColor(red: 1, green: 0.35, blue: 0.3, alpha: 1)
-                : (battery.charging ? UIColor(red: 0.45, green: 0.95, blue: 0.5, alpha: 1) : white)
-            text("\(battery.pct)%", size: 16, weight: .semibold, color: color, centredIn: rect)
+        func symbol(_ name: String, tint: UIColor, pointSize: CGFloat, centredAt c: CGPoint) {
+            let cfg = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .bold)
+            guard let img = UIImage(systemName: name, withConfiguration: cfg)?
+                .withTintColor(tint, renderingMode: .alwaysOriginal) else { return }
+            UIGraphicsPushContext(ctx)
+            img.draw(in: CGRect(x: c.x - img.size.width / 2, y: c.y - img.size.height / 2,
+                                width: img.size.width, height: img.size.height))
+            UIGraphicsPopContext()
         }
 
-        // ETA — "11 min" over the arrival clock time, bottom of the stack.
-        if let eta = tripEtaDate {
-            let sz = Self.etaBoxSize
-            let rect = CGRect(x: rightEdge - sz.width, y: Self.infoBoxesBottom - sz.height,
-                              width: sz.width, height: sz.height)
-            box(rect, border: true)
+        // Call badge — phone icon only. Amber ringing, green active, red ended.
+        if let rect = layout.call, let badge = liveCallBadge {
+            let fill: CGColor = switch badge {
+            case .ringing: CGColor(red: 0.96, green: 0.62, blue: 0.08, alpha: 1)
+            case .active:  CGColor(red: 0.16, green: 0.72, blue: 0.32, alpha: 1)
+            case .ended:   CGColor(red: 0.88, green: 0.18, blue: 0.18, alpha: 1)
+            }
+            box(rect, fill: fill, border: false)
+            symbol("phone.fill", tint: white, pointSize: 14, centredAt: CGPoint(x: rect.midX, y: rect.midY))
+        }
+
+        // Battery — percent; a green bolt icon while charging.
+        if let rect = layout.battery, let battery {
+            box(rect, fill: dark, border: false)
+            if battery.charging {
+                symbol("bolt.fill", tint: UIColor(red: 0.3, green: 0.9, blue: 0.4, alpha: 1),
+                       pointSize: 13, centredAt: CGPoint(x: rect.minX + 14, y: rect.midY))
+                var textRect = rect; textRect.origin.x += 12; textRect.size.width -= 12
+                text("\(battery.pct)%", size: 16, weight: .semibold, color: white, in: textRect)
+            } else {
+                let low = battery.pct <= 20
+                text("\(battery.pct)%", size: 16, weight: .semibold,
+                     color: low ? UIColor(red: 1, green: 0.35, blue: 0.3, alpha: 1) : white, in: rect)
+            }
+        }
+
+        // ETA — "11 min" over the arrival clock time.
+        if let rect = layout.eta, let eta = tripEtaDate {
+            box(rect, fill: dark, border: true)
             let mins = max(0, Int((eta.timeIntervalSinceNow / 60).rounded(.up)))
             let remaining = mins >= 60 ? "\(mins / 60) h \(mins % 60)" : "\(mins) min"
             let arrival = (tripIs24Hour ? Self.arrivalFormatter24 : Self.arrivalFormatter12).string(from: eta)
-            text(remaining, size: 17, weight: .bold, color: white, centredIn: rect, yOffset: -8)
+            text(remaining, size: 17, weight: .bold, color: white, in: rect, yOffset: -8)
             text(arrival, size: 13, weight: .medium, color: white.withAlphaComponent(0.85),
-                 centredIn: rect, yOffset: 11)
+                 in: rect, yOffset: 11)
         }
     }
 
@@ -2907,9 +2990,9 @@ extension MapViewSource {
             : 0
         // The battery / ETA boxes own the right edge down to the sign row;
         // lift the pill above them while they're up.
-        let boxBump: CGFloat = shouldDrawInfoBoxes
-            ? frameSize.height - Self.infoBoxesTop + Self.overlayClearance - margin
-            : 0
+        let boxBump: CGFloat = infoStackTop.map {
+            frameSize.height - $0 + Self.overlayClearance - margin
+        } ?? 0
         let originY = frameSize.height - margin - pillH - max(signBump, barBump, boxBump)
         // Right edge: the frame margin, or the round glass where it cuts in
         // (a lifted pill's top-right corner would be hidden).
@@ -2991,59 +3074,38 @@ extension MapViewSource {
             return
         }
         let notice = active.notice
-        let accent = notice.level.accent
 
-        // Layout: [glyph] gap [text] inside a padded rounded card.
-        let glyphSize: CGFloat = 30
-        let gap: CGFloat = 10
-        let padX: CGFloat = 16
-        let padY: CGFloat = 14
-        var fontSize: CGFloat = 22
+        // Small pill, top-centre of the glass: [accent dot] text. Solid dark
+        // backdrop (same encoder reason as the other overlays).
+        let dot: CGFloat = 8
+        let gap: CGFloat = 7
+        let padX: CGFloat = 12
+        let h: CGFloat = 26
+        var fontSize: CGFloat = 13
 
         let font = UIFont.systemFont(ofSize: fontSize, weight: Self.overlayTextWeight)
         var textW = (notice.text as NSString)
             .size(withAttributes: [.font: font]).width.rounded(.up)
-        // Sits just above the dash's own turn card, centred on the round
-        // glass — clear of the weather pill, which stays beside the puck.
-        let cardH = padY + max(glyphSize, fontSize) + padY
-        let originY = Self.navCardCenter.y - Self.navCardRadius - Self.overlayClearance - cardH
-        // Width-fit to the glass at that height, so a long notice shrinks
-        // instead of running off the visible area.
-        let span = Self.visibleSpan(minY: originY, maxY: originY + cardH)
-        let maxTextW = span.upperBound - span.lowerBound - (padX + glyphSize + gap + padX)
+        let originY: CGFloat = 16
+        let span = Self.visibleSpan(minY: originY, maxY: originY + h)
+        let maxTextW = span.upperBound - span.lowerBound - (padX + dot + gap + padX)
         if textW > maxTextW {
             fontSize *= maxTextW / textW
             textW = maxTextW
         }
+        let w = padX + dot + gap + textW + padX
+        let card = CGRect(x: Self.visibleCenter.x - w / 2, y: originY, width: w, height: h)
 
-        let cardW = padX + glyphSize + gap + textW + padX
-        let originX = Self.visibleCenter.x - cardW / 2
-        let card = CGRect(x: originX, y: originY, width: cardW, height: cardH)
-
-        // Backdrop: solid black, 2 px accent border — solid for the same
-        // encoder reason as the weather pill.
         ctx.saveGState()
-        let path = CGPath(roundedRect: card, cornerWidth: 12, cornerHeight: 12, transform: nil)
-        ctx.addPath(path)
-        ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        ctx.addPath(CGPath(roundedRect: card, cornerWidth: h / 2, cornerHeight: h / 2, transform: nil))
+        ctx.setFillColor(CGColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1))
         ctx.fillPath()
-        ctx.addPath(path)
-        ctx.setStrokeColor(accent)
-        ctx.setLineWidth(2.0)
-        ctx.strokePath()
+        ctx.setFillColor(notice.level.accent)
+        ctx.fillEllipse(in: CGRect(x: card.minX + padX, y: card.midY - dot / 2, width: dot, height: dot))
         ctx.restoreGState()
 
-        // Glyph, vertically centred.
-        let glyphOrigin = CGPoint(x: card.minX + padX, y: card.midY - glyphSize / 2)
-        ctx.saveGState()
-        ctx.translateBy(x: glyphOrigin.x, y: glyphOrigin.y)
-        drawNoticeGlyph(notice.level, in: ctx, size: glyphSize)
-        ctx.restoreGState()
-
-        // Text, vertically centred.
-        let textOrigin = CGPoint(x: card.minX + padX + glyphSize + gap,
-                                 y: card.midY - fontSize / 2 - 1)
-        Self.drawText(notice.text, in: ctx, at: textOrigin,
+        Self.drawText(notice.text, in: ctx,
+                      at: CGPoint(x: card.minX + padX + dot + gap, y: card.midY - fontSize / 2 - 1),
                       width: textW + 4, fontSize: fontSize, bold: true)
     }
 

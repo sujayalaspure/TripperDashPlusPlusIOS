@@ -1604,7 +1604,11 @@ final class AppStatus {
     /// when not connected (handled inside `BikeLink.sendCallState`), so it's
     /// safe to start once at launch and leave running for the whole session.
     private func wireCallObserver() {
-        let obs = CallStateObserver(link: bikeLink)
+        let obs = CallStateObserver { [weak self] state in
+            guard let self else { return }
+            // Small phone badge on the streamed map (replaces the OEM card).
+            self.mapViewSource.setCallState(self.dashNavSettings.callStateEnabled ? state : .none)
+        }
         callObserver = obs
         obs.start()
         observeCallStateToggle()
@@ -1663,6 +1667,8 @@ final class AppStatus {
         // `snapshot()` is main-actor isolated; the closure stays valid for
         // the whole session.
         mapViewSource.phoneBatteryProvider = { [weak self, weak tele] in
+            // User can hide the dash battery box in Settings.
+            guard self?.dashNavSettings.batteryOnDashEnabled ?? true else { return nil }
             if let tele, tele.batteryKnown { return (tele.batteryPct, tele.isCharging) }
             // Simulator has no battery: in demo mode show a stand-in so the
             // box is visible.
