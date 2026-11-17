@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TripperDash++ App Store icon — SVG (vector) -> PNG via cairosvg.
+"""ThrottleNav App Store icon — SVG (vector) -> PNG via cairosvg.
 
 Royal Enfield winged-badge DNA, modernised & flat:
   - circular badge, charcoal field, amber double ring, arc lettering
@@ -7,9 +7,16 @@ Royal Enfield winged-badge DNA, modernised & flat:
   - centre: a navigation cursor on an RE-red disc
 Vector curves give smooth feathers PIL polygons can't.
 
-Output: 1024x1024, opaque sRGB, no alpha.
+Output: 1024x1024, opaque sRGB, no alpha — plus the launch-screen logo
+(LaunchLogo.imageset): the same badge at 200/400/600 px, circle-masked.
+
+Lettering is DejaVu Sans Bold; Verdana Bold (same design family, ships
+with macOS) is the fallback when DejaVu isn't installed.
 """
 import math
+import os
+import tempfile
+
 import cairosvg
 
 S = 1024
@@ -24,6 +31,23 @@ INK    = "#16171A"
 CHAR_T = "#282B30"
 CHAR_B = "#0D0E10"
 CREAM  = "#F8F3E2"
+
+def _lettering_font():
+    """DejaVu Sans if fontconfig has it, else Verdana (same Bitstream Vera
+    design family; ships with macOS). Cairo takes ONE family name, so a
+    CSS-style fallback list would silently drop to a regular-weight face."""
+    import subprocess
+    try:
+        out = subprocess.run(["fc-list", ":family=DejaVu Sans"],
+                             capture_output=True, text=True).stdout
+        if out.strip():
+            return "DejaVu Sans"
+    except OSError:
+        pass
+    return "Verdana"
+
+
+FONT = _lettering_font()
 
 EMX, EMY = C, C - 4  # emblem centre
 EMS = 0.76           # inner-emblem scale-down — frees ring space for bigger arc text
@@ -116,11 +140,11 @@ svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{S}" height="{S}" viewB
   <circle cx="{C}" cy="{C}" r="248" fill="none" stroke="{YEL_LO}" stroke-width="5"/>
 
   <!-- arc lettering (centred in the wide ring band, between r=452 and r=248) -->
-  <text font-family="DejaVu Sans" font-weight="bold" font-size="94"
+  <text font-family="{FONT}" font-weight="bold" font-size="94"
         fill="{YEL}" letter-spacing="2" text-anchor="middle">
-    <textPath href="#arcTop" startOffset="50%">TRIPPERDASH</textPath>
+    <textPath href="#arcTop" startOffset="50%">THROTTLENAV</textPath>
   </text>
-  <text font-family="DejaVu Sans" font-weight="bold" font-size="88"
+  <text font-family="{FONT}" font-weight="bold" font-size="88"
         fill="{CREAM}" letter-spacing="3" text-anchor="middle">
     <textPath href="#arcBot" startOffset="50%">NAVIGATION</textPath>
   </text>
@@ -146,17 +170,18 @@ svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{S}" height="{S}" viewB
   </g>
 </svg>'''
 
-with open("/tmp/appicon.svg", "w") as f:
+_tmp = tempfile.gettempdir()
+with open(os.path.join(_tmp, "appicon.svg"), "w") as f:
     f.write(svg)
 
 # render to PNG on a black background (then it's opaque, no alpha)
-cairosvg.svg2png(bytestring=svg.encode(), write_to="/tmp/appicon_raw.png",
+raw = os.path.join(_tmp, "appicon_raw.png")
+cairosvg.svg2png(bytestring=svg.encode(), write_to=raw,
                  output_width=S, output_height=S, background_color="#0D0E10")
 
 # flatten to guaranteed-opaque RGB
-from PIL import Image
-import os
-im = Image.open("/tmp/appicon_raw.png").convert("RGB")
+from PIL import Image, ImageDraw
+im = Image.open(raw).convert("RGB")
 # Resolve the output path relative to THIS script so the generator works
 # from any git worktree / checkout location (previously hard-coded to one
 # absolute clone, which broke when run from a second worktree).
@@ -166,3 +191,18 @@ out = os.path.normpath(os.path.join(
     "AppIcon.appiconset", "AppIcon-1024.png"))
 im.save(out, "PNG")
 print("wrote", out, im.size, im.mode)
+
+# Launch-screen logo: the badge downscaled to a 200 pt square, with a
+# circular alpha mask so no faint square shows on the launch backdrop.
+launch_dir = os.path.normpath(os.path.join(
+    _here, "..", "TripperDashPP", "Assets.xcassets", "LaunchLogo.imageset"))
+for scale in (1, 2, 3):
+    px = 200 * scale
+    logo = im.resize((px, px), Image.LANCZOS).convert("RGBA")
+    # Supersampled mask for a smooth edge.
+    big = Image.new("L", (px * 4, px * 4), 0)
+    ImageDraw.Draw(big).ellipse((0, 0, px * 4 - 1, px * 4 - 1), fill=255)
+    logo.putalpha(big.resize((px, px), Image.LANCZOS))
+    dst = os.path.join(launch_dir, f"LaunchLogo@{scale}x.png")
+    logo.save(dst, "PNG")
+    print("wrote", dst, logo.size, logo.mode)
