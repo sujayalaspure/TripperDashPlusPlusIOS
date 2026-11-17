@@ -266,7 +266,7 @@ final class RouteTileCache {
     /// the wing anchor rows sit. 1500 m means the user can drift up
     /// to ~2 km from the centerline (lateral offset + ~half a tile
     /// span) before the cache misses and the dark fallback kicks in.
-    static let lateralOffset: CLLocationDistance = 1500
+    nonisolated static let lateralOffset: CLLocationDistance = 1500
 
     /// Hard upper bound on how far a drawn tile's geographic centre may be
     /// from the live GPS fix. Enforced at draw time in
@@ -864,7 +864,7 @@ final class RouteTileCache {
     /// baking anything. Pure arithmetic, runs in microseconds.
     private func computeAllAnchors(for route: MKRoute) -> [Anchor] {
         guard route.polyline.pointCount > 0 else { return [] }
-        let mainCoords = anchorsAlongPolyline(route.polyline, stride: anchorStride)
+        let mainCoords = Self.anchorsAlongPolyline(route.polyline, stride: anchorStride)
         // Tag each main anchor with its routeOffset (distance along
         // the polyline from start). We need this to define the
         // rolling window — Euclidean distance to the rider doesn't
@@ -883,9 +883,9 @@ final class RouteTileCache {
         // Build wing rows with the same offsets as their main counterparts
         // (base layer only — see `bakesLateralRows`).
         let leftCoords = bakesLateralRows
-            ? lateralAnchors(mainCoords, offsetMeters: -Self.lateralOffset) : []
+            ? Self.lateralAnchors(mainCoords, offsetMeters: -Self.lateralOffset) : []
         let rightCoords = bakesLateralRows
-            ? lateralAnchors(mainCoords, offsetMeters: +Self.lateralOffset) : []
+            ? Self.lateralAnchors(mainCoords, offsetMeters: +Self.lateralOffset) : []
         var out: [Anchor] = []
         out.reserveCapacity(mainCoords.count * 3)
         for (i, c) in mainCoords.enumerated() {
@@ -1187,8 +1187,10 @@ final class RouteTileCache {
     /// Walk the polyline and emit anchor coordinates spaced
     /// approximately `stride` meters apart along the great-circle
     /// path. The first and last polyline vertex are always emitted
-    /// so the route ends are fully covered.
-    private func anchorsAlongPolyline(
+    /// so the route ends are fully covered. Static + nonisolated so the
+    /// offline route download (`OfflineCorridor`) samples the exact same
+    /// anchors the ride will bake.
+    nonisolated static func anchorsAlongPolyline(
         _ polyline: MKPolyline,
         stride: CLLocationDistance
     ) -> [CLLocationCoordinate2D] {
@@ -1222,7 +1224,7 @@ final class RouteTileCache {
     /// Produce a parallel row of anchors offset perpendicular to the
     /// main polyline by `offsetMeters`. Flat-earth approximation —
     /// fine for offsets ≤ a few km. (Unchanged from the MapKit era.)
-    private func lateralAnchors(
+    nonisolated static func lateralAnchors(
         _ anchors: [CLLocationCoordinate2D],
         offsetMeters: CLLocationDistance
     ) -> [CLLocationCoordinate2D] {
@@ -1307,9 +1309,7 @@ final class RouteTileCache {
         // Top-left tile index of the gridSide × gridSide block.
         // We center the block on the anchor: the anchor's fractional
         // position lands somewhere inside the central tile(s).
-        let half = gridSide / 2
-        let tlx = Int(floor(fx)) - half
-        let tly = Int(floor(fy)) - half
+        let (tlx, tly) = compositeBlockOrigin(fx: fx, fy: fy, gridSide: gridSide)
 
         // Fetch all gridSide² (25 at gridSide=5) tiles in parallel. Each call
         // hits TileDiskCache first then OSMTileFetcher; misses are
@@ -1378,6 +1378,15 @@ final class RouteTileCache {
         )
         await CompositeGate.shared.release()
         return tile
+    }
+
+    /// Top-left tile index of the gridSide × gridSide block a composite
+    /// centred at fractional tile coords (fx, fy) reads. Shared with
+    /// `OfflineCorridor` so an offline download covers exactly the
+    /// tiles each composite will ask the disk cache for.
+    nonisolated static func compositeBlockOrigin(fx: Double, fy: Double, gridSide: Int) -> (x: Int, y: Int) {
+        let half = gridSide / 2
+        return (Int(floor(fx)) - half, Int(floor(fy)) - half)
     }
 
     /// CPU half of `composite`: paint the fetched tiles into one bitmap,

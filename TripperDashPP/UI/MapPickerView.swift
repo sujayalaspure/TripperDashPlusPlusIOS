@@ -106,6 +106,8 @@ struct MapPickerView: View {
     @State private var longPressCoord: CLLocationCoordinate2D?
     @State private var showLongPressDialog = false
     @State private var showRoutePreferences = false
+    /// Planner's "Download for offline" sheet.
+    @State private var showOfflineSheet = false
     /// Stops (id + name) of the plan last saved via the planner's bookmark
     /// button. The button shows "saved" only while the plan still has
     /// exactly these stops — edit the plan, or let a "Pin …" get its
@@ -138,7 +140,7 @@ struct MapPickerView: View {
         showSettings || showSavedRoutes || showRideHistory || prerenderActive
             || showSearch || showFavoriteEditor || showRoutePreferences
             || showLongPressDialog || showBikePicker || showDiscardPlanDialog
-            || showEditRoute
+            || showEditRoute || showOfflineSheet
     }
 
     private static func stopsSnapshot(_ plan: PlannedRoute) -> [String] {
@@ -792,6 +794,16 @@ struct MapPickerView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    showOfflineSheet = true
+                } label: {
+                    Image(systemName: OfflineMapStore.shared.download(forKey: Self.offlineKey(plan))?.isComplete == true
+                          ? "arrow.down.circle.fill" : "arrow.down.circle")
+                }
+                .disabled(!plan.isComputed)
+                .accessibilityLabel("Download map for offline")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
                     showRoutePreferences = true
                 } label: {
                     Image(systemName: "slider.horizontal.3")
@@ -799,6 +811,58 @@ struct MapPickerView: View {
                 .accessibilityLabel("Route preferences")
             }
         }
+        .sheet(isPresented: $showOfflineSheet) {
+            NavigationStack {
+                Form {
+                    OfflineRouteDownloadSection(
+                        name: Self.offlineName(plan),
+                        routeKey: Self.offlineKey(plan),
+                        signature: Self.offlineSignature(plan),
+                        resolve: {
+                            // The route as planned now, every leg's chosen option.
+                            plan.legs.compactMap { $0.selected?.route.polyline }
+                                .flatMap(OfflineCorridor.coordinates(of:))
+                        }
+                    )
+                }
+                .navigationTitle("Offline map")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showOfflineSheet = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    // MARK: - Offline map (planner)
+
+    /// The plan's fixed stops — the live "current location" origin moves
+    /// with the rider, so it's left out of the identity.
+    private static func offlineStops(_ plan: PlannedRoute) -> [CLLocationCoordinate2D] {
+        plan.waypoints.filter { !$0.isCurrentLocation }.map(\.coordinate)
+    }
+
+    /// Same stops → same download entry, so re-planning a trip replaces
+    /// its earlier download instead of adding another.
+    static func offlineKey(_ plan: PlannedRoute) -> String {
+        "plan:" + OfflineCorridor.signature(of: offlineStops(plan))
+    }
+
+    /// Changes when the chosen roads change (another alternative picked,
+    /// preferences changed), which marks the download as out of date.
+    static func offlineSignature(_ plan: PlannedRoute) -> String {
+        OfflineCorridor.signature(of: plan.legs.compactMap { $0.selected?.route.polyline }
+            .flatMap(OfflineCorridor.coordinates(of:)))
+    }
+
+    private static func offlineName(_ plan: PlannedRoute) -> String {
+        let named = plan.waypoints.filter { !$0.isCurrentLocation }
+        guard let last = named.last else { return "Planned route" }
+        if named.count >= 2, let first = named.first { return "\(first.name) → \(last.name)" }
+        return last.name
     }
 
     /// Compact start→finish summary shown in place of the Stops list for a

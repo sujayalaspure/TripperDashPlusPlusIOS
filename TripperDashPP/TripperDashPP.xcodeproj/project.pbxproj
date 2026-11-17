@@ -14,6 +14,7 @@
 		6C0A00000000000000000002 /* LinkErrorMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C0A00000000000000000001 /* LinkErrorMappingTests.swift */; };
 		6CEEF1E3E02E5B291694EB0C /* InteractiveMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BFF19EA4B0DFEC1244F8F68 /* InteractiveMapView.swift */; };
 		7E57000000000000000000A1 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E57000000000000000000A0 /* SmokeTests.swift */; };
+		0FF1E00000000000000000D1 /* OfflineCorridorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FF1E00000000000000000D0 /* OfflineCorridorTests.swift */; };
 		7E57000000000000000000A3 /* WeatherAlongRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E57000000000000000000A2 /* WeatherAlongRouteTests.swift */; };
 		7E57000000000000000000A5 /* RideStatsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E57000000000000000000A4 /* RideStatsTests.swift */; };
 		7E57000000000000000000A7 /* RideStatsFormattingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E57000000000000000000A6 /* RideStatsFormattingTests.swift */; };
@@ -119,6 +120,8 @@
 		F00DBABE00000000DEADBEF1 /* RouteTileCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFEFEED00000000DEADBEF1 /* RouteTileCache.swift */; };
 		F00DBABE00000000DEADBEF2 /* SnapshotterPark.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFEFEED00000000DEADBEF2 /* SnapshotterPark.swift */; };
 		F00DBABE00000000DEADBEF7 /* TileDiskCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFEFEED00000000DEADBEF7 /* TileDiskCache.swift */; };
+		0FF1E00000000000000000B1 /* OfflineMapStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FF1E00000000000000000B0 /* OfflineMapStore.swift */; };
+		0FF1E00000000000000000A1 /* OfflineCorridor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FF1E00000000000000000A0 /* OfflineCorridor.swift */; };
 		F00DBABE00000000DEADBEF8 /* WebMercator.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFEFEED00000000DEADBEF8 /* WebMercator.swift */; };
 		F00DBABE00000000DEADBEF9 /* OSMTileFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFEFEED00000000DEADBEF9 /* OSMTileFetcher.swift */; };
 		F00DBABE00000000DEADBF01 /* MapStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFEFEED00000000DEADBF01 /* MapStyle.swift */; };
@@ -132,6 +135,7 @@
 		FE70000000000000000000C1 /* RouteStartPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE70000000000000000000C0 /* RouteStartPlanner.swift */; };
 		FE70000000000000000000D1 /* SavedRoutesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE70000000000000000000D0 /* SavedRoutesListView.swift */; };
 		FE70000000000000000000E1 /* SavedRouteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE70000000000000000000E0 /* SavedRouteDetailView.swift */; };
+		0FF1E00000000000000000C1 /* OfflineRouteDownloadSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FF1E00000000000000000C0 /* OfflineRouteDownloadSection.swift */; };
 		FE70000000000000000000F1 /* SavedRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE70000000000000000000F0 /* SavedRoute.swift */; };
 		FEA0000000000000000000B1 /* RouteProgressMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEA0000000000000000000B0 /* RouteProgressMap.swift */; };
 /* End PBXBuildFile section */
@@ -182,6 +186,7 @@
 		6C0A00000000000000000001 /* LinkErrorMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkErrorMappingTests.swift; sourceTree = "<group>"; };
 		7BFF19EA4B0DFEC1244F8F68 /* InteractiveMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveMapView.swift; sourceTree = "<group>"; };
 		7E57000000000000000000A0 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
+		0FF1E00000000000000000D0 /* OfflineCorridorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineCorridorTests.swift; sourceTree = "<group>"; };
 		7E57000000000000000000A2 /* WeatherAlongRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherAlongRouteTests.swift; sourceTree = "<group>"; };
 		7E57000000000000000000A4 /* RideStatsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideStatsTests.swift; sourceTree = "<group>"; };
 		7E57000000000000000000A6 /* RideStatsFormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideStatsFormattingTests.swift; sourceTree = "<group>"; };
@@ -289,6 +294,8 @@
 		CAFEFEED00000000DEADBEF1 /* RouteTileCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTileCache.swift; sourceTree = "<group>"; };
 		CAFEFEED00000000DEADBEF2 /* SnapshotterPark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotterPark.swift; sourceTree = "<group>"; };
 		CAFEFEED00000000DEADBEF7 /* TileDiskCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TileDiskCache.swift; sourceTree = "<group>"; };
+		0FF1E00000000000000000B0 /* OfflineMapStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineMapStore.swift; sourceTree = "<group>"; };
+		0FF1E00000000000000000A0 /* OfflineCorridor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineCorridor.swift; sourceTree = "<group>"; };
 		CAFEFEED00000000DEADBEF8 /* WebMercator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebMercator.swift; sourceTree = "<group>"; };
 		CAFEFEED00000000DEADBEF9 /* OSMTileFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OSMTileFetcher.swift; sourceTree = "<group>"; };
 		CAFEFEED00000000DEADBF01 /* MapStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapStyle.swift; sourceTree = "<group>"; };
@@ -304,6 +311,7 @@
 		FE70000000000000000000C0 /* RouteStartPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteStartPlanner.swift; sourceTree = "<group>"; };
 		FE70000000000000000000D0 /* SavedRoutesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedRoutesListView.swift; sourceTree = "<group>"; };
 		FE70000000000000000000E0 /* SavedRouteDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedRouteDetailView.swift; sourceTree = "<group>"; };
+		0FF1E00000000000000000C0 /* OfflineRouteDownloadSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineRouteDownloadSection.swift; sourceTree = "<group>"; };
 		FE70000000000000000000F0 /* SavedRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedRoute.swift; sourceTree = "<group>"; };
 		FEA0000000000000000000B0 /* RouteProgressMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteProgressMap.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -353,6 +361,7 @@
 			isa = PBXGroup;
 			children = (
 				7E57000000000000000000A0 /* SmokeTests.swift */,
+				0FF1E00000000000000000D0 /* OfflineCorridorTests.swift */,
 				7E57000000000000000000A2 /* WeatherAlongRouteTests.swift */,
 				7E5700000000000000000B00 /* LegTailMapKitProbeTests.swift */,
 				7E57000000000000000000A4 /* RideStatsTests.swift */,
@@ -475,6 +484,8 @@
 				CAFEFEED00000000DEADBEEF /* MapViewSource.swift */,
 				CAFEFEED00000000DEADBEF1 /* RouteTileCache.swift */,
 				CAFEFEED00000000DEADBEF7 /* TileDiskCache.swift */,
+				0FF1E00000000000000000B0 /* OfflineMapStore.swift */,
+				0FF1E00000000000000000A0 /* OfflineCorridor.swift */,
 				CAFEFEED00000000DEADBEF8 /* WebMercator.swift */,
 				CAFEFEED00000000DEADBEF9 /* OSMTileFetcher.swift */,
 				CAFEFEED00000000DEADBEF2 /* SnapshotterPark.swift */,
@@ -576,6 +587,7 @@
 				A4F000000000000000000F50 /* RoutePreferencesView.swift */,
 				FE70000000000000000000D0 /* SavedRoutesListView.swift */,
 				FE70000000000000000000E0 /* SavedRouteDetailView.swift */,
+				0FF1E00000000000000000C0 /* OfflineRouteDownloadSection.swift */,
 				FE70000000000000000000B3 /* SavedRoutePreviewMap.swift */,
 				FEA0000000000000000000B0 /* RouteProgressMap.swift */,
 				7E5700000000000000000A71 /* FreeRideHUD.swift */,
@@ -797,6 +809,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7E57000000000000000000A1 /* SmokeTests.swift in Sources */,
+				0FF1E00000000000000000D1 /* OfflineCorridorTests.swift in Sources */,
 				7E57000000000000000000A3 /* WeatherAlongRouteTests.swift in Sources */,
 				7E5700000000000000000B01 /* LegTailMapKitProbeTests.swift in Sources */,
 				7E57000000000000000000A5 /* RideStatsTests.swift in Sources */,
@@ -867,6 +880,8 @@
 				F00DBABE00000000DEADBEEF /* MapViewSource.swift in Sources */,
 				F00DBABE00000000DEADBEF1 /* RouteTileCache.swift in Sources */,
 				F00DBABE00000000DEADBEF7 /* TileDiskCache.swift in Sources */,
+				0FF1E00000000000000000B1 /* OfflineMapStore.swift in Sources */,
+				0FF1E00000000000000000A1 /* OfflineCorridor.swift in Sources */,
 				F00DBABE00000000DEADBEF8 /* WebMercator.swift in Sources */,
 				F00DBABE00000000DEADBEF9 /* OSMTileFetcher.swift in Sources */,
 				F00DBABE00000000DEADBEF2 /* SnapshotterPark.swift in Sources */,
@@ -907,6 +922,7 @@
 				FE70000000000000000000C1 /* RouteStartPlanner.swift in Sources */,
 				FE70000000000000000000D1 /* SavedRoutesListView.swift in Sources */,
 				FE70000000000000000000E1 /* SavedRouteDetailView.swift in Sources */,
+				0FF1E00000000000000000C1 /* OfflineRouteDownloadSection.swift in Sources */,
 				FE70000000000000000000B2 /* SavedRoutePreviewMap.swift in Sources */,
 				FEA0000000000000000000B1 /* RouteProgressMap.swift in Sources */,
 				7E5700000000000000000A62 /* GPXExporter.swift in Sources */,

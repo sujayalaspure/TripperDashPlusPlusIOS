@@ -148,7 +148,9 @@ struct SavedRoutesListView: View {
         let shown = store.sortedByNewest
         for i in offsets {
             guard shown.indices.contains(i) else { continue }
-            store.remove(id: shown[i].id)
+            let id = shown[i].id
+            store.remove(id: id)
+            Task { await OfflineMapStore.shared.delete(routeKey: SavedRouteDetailView.offlineKey(id)) }
         }
     }
 }

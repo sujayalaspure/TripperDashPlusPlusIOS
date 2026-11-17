@@ -205,7 +205,9 @@ enum PolylineMath {
     // MARK: - Geometry primitives
 
     /// Great-circle distance between two coordinates in meters.
-    static func haversine(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationDistance {
+    /// `nonisolated`: also used off the main actor by
+    /// `RouteTileCache.anchorsAlongPolyline` (offline corridor planning).
+    nonisolated static func haversine(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationDistance {
         let R = 6_371_000.0
         let φ1 = a.latitude * .pi / 180
         let φ2 = b.latitude * .pi / 180

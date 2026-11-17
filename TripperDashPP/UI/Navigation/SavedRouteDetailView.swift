@@ -127,6 +127,15 @@ struct SavedRouteDetailView: View {
                 Text("Write this route to a GPX file you can share or save to Files.")
             }
 
+            OfflineRouteDownloadSection(
+                name: route.name,
+                routeKey: Self.offlineKey(route.id),
+                signature: OfflineCorridor.signature(of: route.points.map(\.coordinate)),
+                footer: "Saves the map along this route so the dash keeps showing it without mobile signal. The stretch from where you are to the route's first point isn't included. Routing, search, weather and speed cameras still need signal.",
+                resolve: { try await roadGeometry(route) }
+            )
+            .disabled(editMode == .active)
+
             Section {
                 Button(role: .destructive) {
                     showDeleteConfirm = true
@@ -163,6 +172,7 @@ struct SavedRouteDetailView: View {
                             titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 store.remove(id: routeId)
+                Task { await OfflineMapStore.shared.delete(routeKey: Self.offlineKey(routeId)) }
                 dismiss()
             }
             Button("Cancel", role: .cancel) {}
@@ -343,6 +353,29 @@ struct SavedRouteDetailView: View {
         refreshRoadDistance(route.id, kind: route.kind, points: pts)
     }
 
+    // MARK: - Offline map
+
+    static func offlineKey(_ id: UUID) -> String { "saved:\(id.uuidString)" }
+
+    /// The roads this route rides on. A track's points are its shape; a
+    /// waypoint route is routed leg by leg, as Start does (best option per
+    /// leg, current route preferences).
+    private func roadGeometry(_ route: SavedRoute) async throws -> [CLLocationCoordinate2D] {
+        let points = route.points
+        if route.kind == .track { return points.map(\.coordinate) }
+        var coords: [CLLocationCoordinate2D] = []
+        for (from, to) in zip(points, points.dropFirst()) {
+            let options = try await status.routingService.calculateLeg(
+                from: Waypoint(name: from.name ?? "", coordinate: from.coordinate),
+                to: Waypoint(name: to.name ?? "", coordinate: to.coordinate),
+                preferences: status.navigationStore.routePreferences,
+                alternates: false, timeout: 15)
+            guard let leg = options.first else { throw OfflineRouteError.noRoute }
+            coords += OfflineCorridor.coordinates(of: leg.route.polyline)
+        }
+        return coords
+    }
+
     // MARK: - Name editing
 
     private func commitName() {
@@ -415,5 +448,13 @@ struct SavedRouteDetailView: View {
                 ? String(format: "%.0f ft", meters * 3.280839895)
                 : String(format: "%.1f mi", miles)
         }
+    }
+}
+
+/// A leg of a route couldn't be routed while preparing an offline download.
+enum OfflineRouteError: LocalizedError {
+    case noRoute
+    var errorDescription: String? {
+        "Couldn't calculate the roads for this route. Check your connection and try again."
     }
 }

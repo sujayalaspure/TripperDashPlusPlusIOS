@@ -30,6 +30,13 @@
 //  cap. Both run off-main and only at startup, so the hot read/write
 //  path stays fast.
 //
+//  Pinned (offline) tiles: a route downloaded for offline use writes its
+//  tiles to a SECOND tree, `Application Support/OfflineTiles/<ns>/<z>/<x>/<y>.png`,
+//  same layout. It is outside `Caches`, so neither iOS's storage-pressure
+//  purge nor `evictIfNeeded` / `clearAll` touch it; `read` falls back to it
+//  on a cache miss. Only `OfflineMapStore` deletes pinned tiles, when the
+//  rider deletes a download. Excluded from iCloud backup (re-downloadable).
+//
 
 import CoreLocation
 import Foundation
@@ -72,6 +79,19 @@ actor TileDiskCache {
         return dir
     }()
 
+    /// Root of the pinned (offline download) tile tree. Application
+    /// Support, not Caches, so iOS never purges it; excluded from backup.
+    private lazy var pinnedBaseDir: URL = {
+        let fm = FileManager.default
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        var dir = support.appendingPathComponent("OfflineTiles", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? dir.setResourceValues(values)
+        return dir
+    }()
+
     /// Build the on-disk URL for tile (z, x, y) in `style`. The style's
     /// `tileCacheNamespace` is the FIRST path component. Both palettes
     /// return the SAME namespace (`"osm"`) because they fetch the identical
@@ -94,7 +114,8 @@ actor TileDiskCache {
         let url = url(style: style, z: z, x: x, y: y, in: baseDir)
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
               !data.isEmpty else {
-            return nil
+            // Cache miss: a route downloaded for offline use may hold it.
+            return readPinned(style: style, z: z, x: x, y: y)
         }
         // Bump mtime to mark "recently used". Best-effort.
         try? FileManager.default.setAttributes(
@@ -117,6 +138,60 @@ actor TileDiskCache {
             try pngData.write(to: url, options: .atomic)
         } catch {
             log.warning("Disk cache write failed for \(style.tileCacheNamespace, privacy: .public)/\(z, privacy: .public)/\(x, privacy: .public)/\(y, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - Pinned (offline download) tiles
+
+    /// Pinned copy of tile (z, x, y), or nil. No mtime bump: pinned tiles
+    /// are never evicted by age.
+    func readPinned(style: MapStyle, z: Int, x: Int, y: Int) -> Data? {
+        let url = url(style: style, z: z, x: x, y: y, in: pinnedBaseDir)
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+              !data.isEmpty else { return nil }
+        return data
+    }
+
+    /// Whether tile (z, x, y) is already pinned.
+    func hasPinned(style: MapStyle, z: Int, x: Int, y: Int) -> Bool {
+        FileManager.default.fileExists(atPath: url(style: style, z: z, x: x, y: y, in: pinnedBaseDir).path)
+    }
+
+    /// Pin tile (z, x, y). Takes `pngData` when given (fresh download),
+    /// else copies the tile from the regular cache. Returns the pinned
+    /// file's size, or nil when there was nothing to pin / the write failed.
+    func pin(style: MapStyle, z: Int, x: Int, y: Int, pngData: Data? = nil) -> Int? {
+        let data: Data
+        if let pngData {
+            data = pngData
+        } else {
+            let cached = url(style: style, z: z, x: x, y: y, in: baseDir)
+            guard let d = try? Data(contentsOf: cached), !d.isEmpty else { return nil }
+            data = d
+        }
+        let dst = url(style: style, z: z, x: x, y: y, in: pinnedBaseDir)
+        try? FileManager.default.createDirectory(at: dst.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        do {
+            try data.write(to: dst, options: .atomic)
+            return data.count
+        } catch {
+            log.warning("Pinned write failed for \(z, privacy: .public)/\(x, privacy: .public)/\(y, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Size in bytes of the pinned tile, 0 when absent.
+    func pinnedSize(style: MapStyle, z: Int, x: Int, y: Int) -> Int {
+        let u = url(style: style, z: z, x: x, y: y, in: pinnedBaseDir)
+        return (try? u.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+    }
+
+    /// Delete pinned tiles. Empty directories are left; they cost nothing.
+    func unpin(style: MapStyle, keys: some Sequence<TileKey>) {
+        let fm = FileManager.default
+        for k in keys {
+            try? fm.removeItem(at: url(style: style, z: k.z, x: k.x, y: k.y, in: pinnedBaseDir))
         }
     }
 

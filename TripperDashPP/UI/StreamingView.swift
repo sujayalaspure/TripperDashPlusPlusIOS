@@ -265,6 +265,7 @@ struct StreamingView: View {
             }
 
             MapCacheSection()
+            OfflineMapsSettingsSection()
 
             // Debug and TestFlight builds only, never the App Store: the log
             // carries destination and street names and Wi-Fi network names.
