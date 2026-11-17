@@ -29,7 +29,7 @@ RideAlerts/  keyless ride enrichment — WeatherAlertService (Open-Meteo, whole-
 RideStats/   GPS-only trip computer — RideStats (accumulator), RideStatsFormatting, RideStatsService (live session, last ride
              persisted), RideHistoryStore (last 30 days of rides), GPXExporter. Phone-side only
 LiveActivity/        LiveActivityController + RideActivityAttributes (Lock Screen / Dynamic Island ride card)
-TripperDashShare/    Share Extension target ("Share to TripperDash++" from Google / Apple Maps)
+TripperDashShare/    Share Extension target ("Share to ThrottleNav" from Google / Apple Maps)
 TripperDashWidgets/  Widget extension target rendering the Live Activity
 TripperDashPP-Info.plist, TripperDashPP.entitlements (Hotspot Configuration), PrivacyInfo.xcprivacy
 TripperDashPPTests/   Swift Testing unit tests (weather-along-route, ride stats + formatting + persistence + history, next-waypoint label,

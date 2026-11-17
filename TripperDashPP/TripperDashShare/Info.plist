@@ -4,7 +4,7 @@
 <dict>
 
 	<!--
-	  Share Extension Info.plist for the "Share to TripperDash++" target.
+	  Share Extension Info.plist for the "Share to ThrottleNav" target.
 
 	  NSExtensionActivationRule decides when the extension appears in the
 	  share sheet. We want it for shares that carry EITHER a URL (Google
@@ -15,7 +15,7 @@
 	-->
 
 	<key>CFBundleDisplayName</key>
-	<string>TripperDash++</string>
+	<string>ThrottleNav</string>
 
 	<!--
 	  These keys are normally injected by GENERATE_INFOPLIST_FILE. Because

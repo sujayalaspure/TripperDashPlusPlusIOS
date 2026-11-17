@@ -64,7 +64,7 @@ def test_wellformed_xml_and_namespaces():
     root = ET.fromstring(doc)  # raises if malformed
     assert _local(root.tag) == "gpx"
     assert root.get("version") == "1.1"
-    assert root.get("creator") == "TripperDashPP"
+    assert root.get("creator") == "ThrottleNav"
 
 
 def test_track_structure_and_point_count():

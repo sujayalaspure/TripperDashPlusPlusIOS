@@ -472,12 +472,12 @@ private struct LogExportSection: View {
             // Never an empty file again: if it's short, this says whether iOS
             // gave us nothing or none of it was ours.
             let info = Bundle.main.infoDictionary
-            text = "TripperDash++ \(info?["CFBundleShortVersionString"] ?? "?") (\(info?["CFBundleVersion"] ?? "?")), "
+            text = "ThrottleNav \(info?["CFBundleShortVersionString"] ?? "?") (\(info?["CFBundleVersion"] ?? "?")), "
                 + "iOS \(ProcessInfo.processInfo.operatingSystemVersionString), "
                 + "\(read) log entries read\n" + text
             fmt.dateFormat = "yyyy-MM-dd-HHmm"
             let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("TripperDashPP-log-\(fmt.string(from: Date())).txt")
+                .appendingPathComponent("ThrottleNav-log-\(fmt.string(from: Date())).txt")
             try Data(text.utf8).write(to: url, options: .atomic)
             return url
         } catch {

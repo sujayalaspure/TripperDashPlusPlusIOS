@@ -5,7 +5,7 @@
 	<!--
 	  Apple privacy manifest (required for App Store review).
 
-	  TripperDash++ streams a navigation map to the bike's dash. It reads
+	  ThrottleNav streams a navigation map to the bike's dash. It reads
 	  precise location to place the rider on the map and renders/streams it
 	  locally + over the bike's Wi-Fi AP. Nothing is uploaded to a server we
 	  run: tiles come FROM OpenStreetMap and routing FROM Apple MapKit, but

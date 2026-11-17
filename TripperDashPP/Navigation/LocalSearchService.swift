@@ -179,7 +179,7 @@ final class LocalSearchService {
     // MARK: - One-shot geocode
 
     /// Geocode a free-text place name (e.g. a shared "Share to
-    /// TripperDash++" label from Google/Apple Maps that carried no
+    /// ThrottleNav" label from Google/Apple Maps that carried no
     /// coordinates) into a concrete `Destination` in India. When `near`
     /// is given, the nearest match wins. Returns nil on no results /
     /// failure.

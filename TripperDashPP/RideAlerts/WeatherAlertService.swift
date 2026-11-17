@@ -14,7 +14,7 @@
 //
 //  Why Open-Meteo (not WeatherKit):
 //    - WeatherKit needs its own entitlement + a signed JWT per request.
-//      TripperDash++ adds no paid capability beyond its Wi-Fi entitlements
+//      ThrottleNav adds no paid capability beyond its Wi-Fi entitlements
 //      (Hotspot Configuration, Access Wi-Fi Information) and stays keyless (see CLAUDE.md "Distribution"), so WeatherKit is
 //      off the table.
 //    - Open-Meteo is keyless, free for non-commercial use, returns WMO

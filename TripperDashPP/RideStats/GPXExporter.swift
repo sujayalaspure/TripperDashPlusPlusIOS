@@ -60,7 +60,7 @@ enum GPXExporter {
 
         var xml = ""
         xml += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        xml += "<gpx version=\"1.1\" creator=\"TripperDashPP\" "
+        xml += "<gpx version=\"1.1\" creator=\"ThrottleNav\" "
         xml += "xmlns=\"http://www.topografix.com/GPX/1/1\">\n"
 
         // <metadata><name>…</name><time>…</time></metadata>: the route's

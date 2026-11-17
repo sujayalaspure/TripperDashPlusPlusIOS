@@ -38,22 +38,22 @@
 	<!-- ───────────────────────────────────────────────────────────── -->
 
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TripperDash++ needs your location to show the bike position on the Tripper display.</string>
+	<string>ThrottleNav needs your location to show the bike position on the Tripper display.</string>
 
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>TripperDash++ continues streaming navigation to the Tripper display even when the phone screen is off.</string>
+	<string>ThrottleNav continues streaming navigation to the Tripper display even when the phone screen is off.</string>
 
 	<!-- Required by iOS 14+ for direct IP / Bonjour traffic on the LAN.
 	     The Tripper AP lives at 192.168.1.1 over UDP. -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>TripperDash++ needs to talk to the Royal Enfield Tripper dash over Wi-Fi (192.168.1.1).</string>
+	<string>ThrottleNav needs to talk to the Royal Enfield Tripper dash over Wi-Fi (192.168.1.1).</string>
 
 	<!-- Required by iOS to control the system music player: the dash's
 	     now-playing screen sends prev/next-track joystick events that
-	     TripperDash++ forwards to Apple Music via
+	     ThrottleNav forwards to Apple Music via
 	     MPMusicPlayerController.systemMusicPlayer (see DashMediaControl). -->
 	<key>NSAppleMusicUsageDescription</key>
-	<string>TripperDash++ uses the dash joystick to skip to the next or previous song in your music.</string>
+	<string>ThrottleNav uses the dash joystick to skip to the next or previous song in your music.</string>
 
 	<!-- No Bonjour service types: the dash is reached by fixed IP, not
 	     discovery. Harmless placeholder; plain unicast UDP triggers the
@@ -115,7 +115,7 @@
 	<string>dev</string>
 
 	<!-- ───────────────────────────────────────────────────────────── -->
-	<!-- Custom URL scheme — "Share to TripperDash++" handoff          -->
+	<!-- Custom URL scheme — "Share to ThrottleNav" handoff          -->
 	<!-- ───────────────────────────────────────────────────────────── -->
 
 	<!--

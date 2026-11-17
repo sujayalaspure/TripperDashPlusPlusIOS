@@ -2,7 +2,7 @@
 //  ShareViewController.swift
 //  TripperDashShare  (Share Extension target)
 //
-//  The "Share to TripperDash++" entry point. Appears in the iOS share
+//  The "Share to ThrottleNav" entry point. Appears in the iOS share
 //  sheet for Google Maps / Apple Maps (and anything sharing a URL or a
 //  map location). It pulls the shared URL/text out of the extension
 //  context, resolves it into waypoints via the SAME SharedDestination
@@ -170,7 +170,7 @@ final class ShareViewController: UIViewController {
     /// never closes without a word.
     @MainActor
     private func showUnsupported(
-        message: String = "TripperDash++ can only import places and routes shared "
+        message: String = "ThrottleNav can only import places and routes shared "
             + "from Google Maps or Apple Maps. Please share from one of "
             + "those apps."
     ) {

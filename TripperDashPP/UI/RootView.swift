@@ -14,7 +14,7 @@ struct RootView: View {
     var body: some View {
         NavigationStack {
             MapPickerView()
-                .navigationTitle("TripperDash++")
+                .navigationTitle("ThrottleNav")
                 .navigationBarTitleDisplayMode(.inline)
         }
     }

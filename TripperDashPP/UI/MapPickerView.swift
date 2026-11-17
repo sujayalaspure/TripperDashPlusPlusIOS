@@ -63,7 +63,7 @@ struct MapPickerView: View {
     // Sheet flags
     @State private var showSearch = false
     /// Seed text passed into DestinationSearchSheet when opened via a
-    /// "Share to TripperDash++" fallback (un-geocodable shared link).
+    /// "Share to ThrottleNav" fallback (un-geocodable shared link).
     @State private var sharedSearchSeed: String? = nil
     @State private var showFavoriteEditor = false
     @State private var favoriteEditorSeed: Destination?
@@ -411,7 +411,7 @@ struct MapPickerView: View {
     }
 
     /// Replay a share parked during a ride, or open Search pre-filled with a
-    /// label "Share to TripperDash++" couldn't geocode. Consumed only once
+    /// label "Share to ThrottleNav" couldn't geocode. Consumed only once
     /// the gate is open; otherwise it stays pending for the gate onChange.
     private func consumePendingShare() {
         guard shareGateOpen else { return }

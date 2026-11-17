@@ -1392,13 +1392,13 @@ final class BikeLink {
 
     /// Build the hostname the dash will show on its pairing screen.
     /// Like the stock app's pairing label: prefers the device's user-set name,
-    /// falls back to "TripperDashPP" if iOS denies access.
+    /// falls back to "ThrottleNav" if iOS denies access.
     private static func deviceHostname() -> String {
         #if canImport(UIKit)
         let name = UIDevice.current.name
         if !name.isEmpty { return name }
         #endif
-        return "TripperDashPP"
+        return "ThrottleNav"
     }
 
     private func startInboundLoop(socket: DashSocket) {

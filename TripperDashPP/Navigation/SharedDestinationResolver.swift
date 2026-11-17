@@ -2,7 +2,7 @@
 //  SharedDestinationResolver.swift
 //  TripperDashPP
 //
-//  "Share to TripperDash++" — Tesla-style. When the rider shares a place
+//  "Share to ThrottleNav" — Tesla-style. When the rider shares a place
 //  or a route from Google Maps or Apple Maps into the app, this resolves
 //  the shared payload (a URL or a plain-text blob) into an ordered list
 //  of waypoints that pre-fill the planner.

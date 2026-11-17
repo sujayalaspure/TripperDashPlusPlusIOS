@@ -75,7 +75,7 @@ def gpx(points, track_name: str, iso_time: str) -> Optional[str]:
 
     xml = ""
     xml += '<?xml version="1.0" encoding="UTF-8"?>\n'
-    xml += '<gpx version="1.1" creator="TripperDashPP" '
+    xml += '<gpx version="1.1" creator="ThrottleNav" '
     xml += 'xmlns="http://www.topografix.com/GPX/1/1">\n'
     xml += "  <metadata>\n"
     xml += f"    <name>{escape(track_name)}</name>\n"

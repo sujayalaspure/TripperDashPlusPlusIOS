@@ -1267,7 +1267,7 @@ final class AppStatus {
     /// Last planning/recompute error, surfaced in the planning UI.
     var planError: String? = nil
 
-    // MARK: - Shared-destination entry ("Share to TripperDash++")
+    // MARK: - Shared-destination entry ("Share to ThrottleNav")
 
     /// A search hint handed over from a shared link we couldn't geocode —
     /// the planning UI reads this to pre-fill its search field so the rider
@@ -1290,7 +1290,7 @@ final class AppStatus {
     }
 
     /// Pre-fill the planner from a resolved shared payload (Google/Apple
-    /// Maps "Share to TripperDash++"). Coordinates → staged `PlannedRoute`
+    /// Maps "Share to ThrottleNav"). Coordinates → staged `PlannedRoute`
     /// exactly like a saved-route import (origin = live location, shared
     /// stops as waypoints). A name-only payload (Google frequently shares a
     /// place name with NO coordinates) is first geocoded via MKLocalSearch
