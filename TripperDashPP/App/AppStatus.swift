@@ -1650,7 +1650,10 @@ final class AppStatus {
     /// Live phone battery (0-100) — the same value the heartbeat sends to
     /// the dash (`06 04`). nil until telemetry is up or when iOS reports no
     /// level (simulator).
-    var phoneBatteryPct: Int? { deviceTelemetry?.batteryKnown == true ? deviceTelemetry?.batteryPct : nil }
+    var phoneBatteryPct: Int? {
+        if deviceTelemetry?.batteryKnown == true { return deviceTelemetry?.batteryPct }
+        return bikeLink.isDemo ? 87 : nil   // demo stand-in (simulator has no battery)
+    }
     var phoneIsCharging: Bool { deviceTelemetry?.isCharging ?? false }
 
     private func wireDeviceTelemetry() {
@@ -1659,9 +1662,12 @@ final class AppStatus {
         tele.start()
         // `snapshot()` is main-actor isolated; the closure stays valid for
         // the whole session.
-        mapViewSource.phoneBatteryProvider = { [weak tele] in
-            guard let tele, tele.batteryKnown else { return nil }
-            return (tele.batteryPct, tele.isCharging)
+        mapViewSource.phoneBatteryProvider = { [weak self, weak tele] in
+            if let tele, tele.batteryKnown { return (tele.batteryPct, tele.isCharging) }
+            // Simulator has no battery: in demo mode show a stand-in so the
+            // box is visible.
+            if self?.bikeLink.isDemo == true { return (87, false) }
+            return nil
         }
         bikeLink.telemetryProvider = { @Sendable [weak tele] in
             guard let tele else { return .placeholder }
