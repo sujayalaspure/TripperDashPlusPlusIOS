@@ -1647,12 +1647,22 @@ final class AppStatus {
     /// Safe to call once at launch: the provider runs for the whole session
     /// and `BikeLink` only consults it while the heartbeat loop is alive
     /// (i.e. while connected).
+    /// Live phone battery (0-100) — the same value the heartbeat sends to
+    /// the dash (`06 04`). nil until telemetry is up or when iOS reports no
+    /// level (simulator).
+    var phoneBatteryPct: Int? { deviceTelemetry?.batteryKnown == true ? deviceTelemetry?.batteryPct : nil }
+    var phoneIsCharging: Bool { deviceTelemetry?.isCharging ?? false }
+
     private func wireDeviceTelemetry() {
         let tele = DeviceTelemetry(location: locationService)
         deviceTelemetry = tele
         tele.start()
         // `snapshot()` is main-actor isolated; the closure stays valid for
         // the whole session.
+        mapViewSource.phoneBatteryProvider = { [weak tele] in
+            guard let tele, tele.batteryKnown else { return nil }
+            return (tele.batteryPct, tele.isCharging)
+        }
         bikeLink.telemetryProvider = { @Sendable [weak tele] in
             guard let tele else { return .placeholder }
             return await tele.snapshot()

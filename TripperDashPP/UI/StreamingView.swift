@@ -255,12 +255,6 @@ struct StreamingView: View {
                     LabeledContent("Currently",
                                    value: status.effectiveMapStyle == .dark ? "Dark" : "Light")
                 }
-                Toggle(isOn: Binding(
-                    get: { status.dashNavSettings.progressBarEnabled },
-                    set: { status.dashNavSettings.progressBarEnabled = $0 }
-                )) {
-                    Text("Route progress bar")
-                }
                 Text("Auto follows local sunrise and sunset from your GPS position.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

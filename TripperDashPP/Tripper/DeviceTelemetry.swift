@@ -90,6 +90,9 @@ final class DeviceTelemetry {
     /// sane value before the first battery notification lands.
     private(set) var batteryPct: Int = 80
     private(set) var isCharging: Bool = false
+    /// True once iOS has given a real battery level (never on the simulator,
+    /// where `batteryPct` is just the seed).
+    private(set) var batteryKnown: Bool = false
     /// Whether a cellular data path currently exists — the iOS way to
     /// fill the binary `06 01` signal-present flag.
     private(set) var hasCellSignal: Bool = true
@@ -215,6 +218,7 @@ final class DeviceTelemetry {
         let level = UIDevice.current.batteryLevel  // 0.0…1.0, or -1 if unknown
         if level >= 0 {
             batteryPct = max(0, min(100, Int((level * 100).rounded())))
+            batteryKnown = true
         }
         // else: monitoring not ready / simulator — keep last good / seed.
         switch UIDevice.current.batteryState {

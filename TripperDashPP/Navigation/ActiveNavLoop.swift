@@ -155,6 +155,7 @@ final class ActiveNavLoop {
         task = nil
         mapSource?.setNavOverlay(nil)
         mapSource?.setRideProgress(nil)
+        mapSource?.setTripEta(nil, is24Hour: true)
         // Demo mode: clear the on-screen native-bubble snapshot so the preview
         // stops showing a stale maneuver after the ride ends.
         demo?.bubble = nil
@@ -230,7 +231,8 @@ final class ActiveNavLoop {
         // the limit sign / camera pills keep tracking the rider's settings.
         guard nav.isNavigating else {
             mapSource?.setNavOverlay(nil)
-            mapSource?.setRideProgress(nil)   // free-ride / arrived → no bar
+            mapSource?.setRideProgress(nil)
+            mapSource?.setTripEta(nil, is24Hour: true)   // free-ride / arrived → no ETA box
             // Demo: no maneuver while free-riding / arrived → clear the
             // on-screen native bubble so the preview shows a clean map.
             demo?.bubble = nil
@@ -528,51 +530,9 @@ final class ActiveNavLoop {
         // Route ahead → repaint blue over grey on out-and-back retraces.
         mapSource?.setRouteAhead(nav.routeAheadCoordinates)
 
-        // 2a. Ride progress bar (feat/route-progress-bar). Push the trip
-        //     fraction only when the rider has opted in; when off, clear it
-        //     so the bar disappears the same tick the toggle flips. The
-        //     fraction is a pure read off the navigator (breadcrumb vs.
-        //     planned total) — no MapKit work here.
-        if settings.progressBarEnabled {
-            // Locate a known weather hazard on the bar. `distanceAhead` is
-            // how far along the route ahead of the rider the hazard sits; the
-            // rider is at `rideProgressFraction` of `plannedTotalDistance`,
-            // so the hazard's trip fraction is current + ahead/total. Only
-            // when we have a positive planned total AND an ahead-distance
-            // (a hazard AT the rider's position has distanceAhead == nil and
-            // isn't a "somewhere on the route" marker).
-            var hazardFraction: Double? = nil
-            var hazardIsWarning = false
-            var hazardStartFraction: Double? = nil
-            var hazardEndFraction: Double? = nil
-            if let alert = mapSource?.weatherAlert,
-               let ahead = alert.distanceAhead,
-               nav.plannedTotalDistance > 0 {
-                let base = nav.rideProgressFraction
-                let total = nav.plannedTotalDistance
-                let hf = base + ahead / total
-                hazardFraction = max(0, min(1, hf))
-                hazardIsWarning = alert.severity == .warning
-                // A contiguous hazard stretch → start/end fractions so the
-                // bar paints the whole band, not just the near point.
-                if let s = alert.spanStartMeters, let e = alert.spanEndMeters, e > s {
-                    hazardStartFraction = max(0, min(1, base + s / total))
-                    hazardEndFraction = max(0, min(1, base + e / total))
-                }
-            }
-            mapSource?.setRideProgress(
-                MapViewSource.RideProgress(
-                    fraction: nav.rideProgressFraction,
-                    waypointFractions: nav.plannedWaypointFractions,
-                    hazardFraction: hazardFraction,
-                    hazardStartFraction: hazardStartFraction,
-                    hazardEndFraction: hazardEndFraction,
-                    hazardIsWarning: hazardIsWarning
-                )
-            )
-        } else {
-            mapSource?.setRideProgress(nil)
-        }
+        // 2a. ETA + arrival-time box (replaces the retired route progress
+        //     bar). The renderer derives "N min" from the arrival date.
+        mapSource?.setTripEta(etaDate, is24Hour: settings.is24Hour)
 
         // 2b. Spoken guidance (feat/voice-nav). Re-check the enable flag
         //     every tick so toggling voice mid-ride takes effect at once.

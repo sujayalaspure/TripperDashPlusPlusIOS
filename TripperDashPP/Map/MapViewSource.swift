@@ -150,6 +150,12 @@ final class MapViewSource: NSObject, FrameSource {
     /// not navigating or when the feature is off → drawProgressBar
     /// short-circuits (no bar drawn).
     fileprivate var rideProgress: MapViewSource.RideProgress?
+    /// Arrival time of the active route (nil = not navigating) and its clock
+    /// format — drives the ETA box. See `setTripEta`.
+    fileprivate var tripEtaDate: Date?
+    fileprivate var tripIs24Hour = true
+    /// Live phone battery, read at draw time. Set once by `AppStatus`.
+    var phoneBatteryProvider: (@MainActor () -> (pct: Int, charging: Bool)?)?
 
     /// Latest ride-relevant weather alert, pushed in by the nav pump from
     /// `WeatherAlertService`. `nil` → no pill drawn (clear weather, the
@@ -1294,7 +1300,14 @@ extension MapViewSource {
         // Drawn LAST of the map overlays so it sits on top of the tiles
         // at the very bottom where nothing else lives. No-op when the nav
         // pump hasn't pushed a `rideProgress` (feature off / not nav).
+        // (The route progress bar is retired: its slot is now the ETA +
+        // arrival-time box, drawn by `drawInfoBoxes`. `rideProgress` is never
+        // pushed any more, so `drawProgressBar` is a no-op.)
         drawProgressBar(into: ctx)
+
+        // Phone battery + ETA boxes, right edge — same spot as the stock
+        // app. Drawn above the map and the pills, below the notice card.
+        drawInfoBoxes(into: ctx)
 
         // Dash notice ("You've arrived" and friends) — drawn LAST so it sits
         // above every map overlay, upper middle, transform-independent.
@@ -2359,6 +2372,101 @@ extension MapViewSource {
         var maneuverNode: CLLocationCoordinate2D? = nil
     }
 
+    // MARK: - Battery + ETA boxes
+
+    /// Arrival time of the active route, or nil when not navigating. The
+    /// remaining minutes are derived from it at draw time, so the box
+    /// counts down every frame without another push.
+    func setTripEta(_ date: Date?, is24Hour: Bool) {
+        tripEtaDate = date
+        tripIs24Hour = is24Hour
+    }
+
+    /// Top of the box stack (px) and its bottom, which stays above the
+    /// speed-limit sign row (sign top = 300 - 12 - 62 = 226).
+    fileprivate static let infoBoxesTop: CGFloat = 146
+    fileprivate static let infoBoxesBottom: CGFloat = 220
+    fileprivate static let batteryBoxSize = CGSize(width: 52, height: 24)
+    fileprivate static let etaBoxSize = CGSize(width: 70, height: 44)
+
+    fileprivate var shouldDrawInfoBoxes: Bool {
+        tripEtaDate != nil || phoneBatteryProvider?() != nil
+    }
+
+    fileprivate static let arrivalFormatter12: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "h:mm a"
+        f.amSymbol = "am"; f.pmSymbol = "pm"; return f
+    }()
+    fileprivate static let arrivalFormatter24: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
+
+    fileprivate func drawInfoBoxes(into ctx: CGContext) {
+        let battery = phoneBatteryProvider?()
+        guard battery != nil || tripEtaDate != nil else { return }
+
+        let rightEdge = min(frameSize.width - Self.speedLimitSignMargin,
+                            Self.visibleSpan(minY: Self.infoBoxesTop,
+                                             maxY: Self.infoBoxesBottom).upperBound)
+        let white = UIColor.white
+
+        func box(_ rect: CGRect, border: Bool) {
+            let path = CGPath(roundedRect: rect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+            ctx.saveGState()
+            ctx.addPath(path)
+            ctx.setFillColor(CGColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1))
+            ctx.fillPath()
+            if border {
+                ctx.addPath(path)
+                ctx.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.85))
+                ctx.setLineWidth(1.5)
+                ctx.strokePath()
+            }
+            ctx.restoreGState()
+        }
+        func text(_ s: String, size: CGFloat, weight: UIFont.Weight, color: UIColor,
+                  centredIn rect: CGRect, yOffset: CGFloat = 0) {
+            var font = UIFont.systemFont(ofSize: size, weight: weight)
+            var sz = (s as NSString).size(withAttributes: [.font: font])
+            let maxW = rect.width - 8
+            if sz.width > maxW {
+                font = UIFont.systemFont(ofSize: size * maxW / sz.width, weight: weight)
+                sz = (s as NSString).size(withAttributes: [.font: font])
+            }
+            UIGraphicsPushContext(ctx)
+            (s as NSString).draw(
+                at: CGPoint(x: rect.midX - sz.width / 2, y: rect.midY - sz.height / 2 + yOffset),
+                withAttributes: [.font: font, .foregroundColor: color])
+            UIGraphicsPopContext()
+        }
+
+        // Battery — top of the stack.
+        if let battery {
+            let sz = Self.batteryBoxSize
+            let rect = CGRect(x: rightEdge - sz.width, y: Self.infoBoxesTop,
+                              width: sz.width, height: sz.height)
+            box(rect, border: false)
+            let low = battery.pct <= 20 && !battery.charging
+            let color: UIColor = low ? UIColor(red: 1, green: 0.35, blue: 0.3, alpha: 1)
+                : (battery.charging ? UIColor(red: 0.45, green: 0.95, blue: 0.5, alpha: 1) : white)
+            text("\(battery.pct)%", size: 16, weight: .semibold, color: color, centredIn: rect)
+        }
+
+        // ETA — "11 min" over the arrival clock time, bottom of the stack.
+        if let eta = tripEtaDate {
+            let sz = Self.etaBoxSize
+            let rect = CGRect(x: rightEdge - sz.width, y: Self.infoBoxesBottom - sz.height,
+                              width: sz.width, height: sz.height)
+            box(rect, border: true)
+            let mins = max(0, Int((eta.timeIntervalSinceNow / 60).rounded(.up)))
+            let remaining = mins >= 60 ? "\(mins / 60) h \(mins % 60)" : "\(mins) min"
+            let arrival = (tripIs24Hour ? Self.arrivalFormatter24 : Self.arrivalFormatter12).string(from: eta)
+            text(remaining, size: 17, weight: .bold, color: white, centredIn: rect, yOffset: -8)
+            text(arrival, size: 13, weight: .medium, color: white.withAlphaComponent(0.85),
+                 centredIn: rect, yOffset: 11)
+        }
+    }
+
     /// Caller (typically ActiveNavLoop) pushes the latest nav state.
     /// Pass `nil` to clear the overlay (stops drawing).
     func setNavOverlay(_ state: NavOverlayState?) {
@@ -2797,7 +2905,12 @@ extension MapViewSource {
         let barBump: CGFloat = rideProgress != nil
             ? Self.progressBarZoneHeight + 4 - margin
             : 0
-        let originY = frameSize.height - margin - pillH - max(signBump, barBump)
+        // The battery / ETA boxes own the right edge down to the sign row;
+        // lift the pill above them while they're up.
+        let boxBump: CGFloat = shouldDrawInfoBoxes
+            ? frameSize.height - Self.infoBoxesTop + Self.overlayClearance - margin
+            : 0
+        let originY = frameSize.height - margin - pillH - max(signBump, barBump, boxBump)
         // Right edge: the frame margin, or the round glass where it cuts in
         // (a lifted pill's top-right corner would be hidden).
         let maxX = min(frameSize.width - margin,

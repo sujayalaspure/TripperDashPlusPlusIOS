@@ -1735,6 +1735,7 @@ private struct StatusBanner: View {
     /// which deliberately collapses the link's sub-states and so cannot
     /// express "reconnecting, but the dash is the thing that's broken".
     var dashUnresponsive: Bool = false
+    @Environment(AppStatus.self) private var appStatus
 
     var body: some View {
         HStack(spacing: 8) {
@@ -1744,10 +1745,27 @@ private struct StatusBanner: View {
             if let ssid {
                 Text(ssid).font(.caption.monospaced()).foregroundStyle(.secondary)
             }
+            if let pct = appStatus.phoneBatteryPct {
+                Label("\(pct)%", systemImage: batterySymbol(pct, charging: appStatus.phoneIsCharging))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(pct <= 20 && !appStatus.phoneIsCharging ? Color.red : Color.secondary)
+                    .accessibilityLabel("Phone battery \(pct) percent\(appStatus.phoneIsCharging ? ", charging" : "")")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.thinMaterial)
+    }
+
+    private func batterySymbol(_ pct: Int, charging: Bool) -> String {
+        if charging { return "battery.100percent.bolt" }
+        switch pct {
+        case ..<13: return "battery.0percent"
+        case ..<38: return "battery.25percent"
+        case ..<63: return "battery.50percent"
+        case ..<88: return "battery.75percent"
+        default:    return "battery.100percent"
+        }
     }
 
     private var color: Color {
