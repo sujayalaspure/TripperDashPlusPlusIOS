@@ -2,10 +2,16 @@
 //  LocalSearchService.swift
 //  TripperDashPP
 //
-//  Phase 7b — wrapper around MKLocalSearchCompleter for live
-//  autocomplete + MKLocalSearch for resolving a completion to a real
-//  coordinate. Owns its region bias (200 km box around the current
-//  GPS, Czech Republic fallback).
+//  Phase 7b — place search for the destination sheet. Runs a debounced
+//  MKLocalSearch on the typed text, so every row already carries a
+//  coordinate and a country code: the list shows only places in India,
+//  sorted nearest-first from the current GPS fix, and picking a row needs
+//  no second lookup.
+//
+//  Why not MKLocalSearchCompleter: its rows have no coordinate or country,
+//  so they can be neither sorted by distance nor filtered to India, and
+//  MapKit does not enforce a `.required` region on them (measured: "Paris"
+//  suggests and resolves to France).
 //
 
 import CoreLocation
@@ -16,114 +22,178 @@ import SwiftUI
 
 @MainActor
 @Observable
-final class LocalSearchService: NSObject {
+final class LocalSearchService {
 
-    /// Current autocomplete results. Driven by MKLocalSearchCompleter
-    /// delegate callbacks; UI observes this via @Observable.
-    private(set) var completions: [MKLocalSearchCompletion] = []
-    /// Any error from the most recent completer update.
+    /// One search row: a resolved destination plus what the row renders.
+    struct Result: Identifiable {
+        let id: String
+        let destination: Destination
+        let title: String
+        let subtitle: String
+        /// Metres from `biasCenter`; nil when there is no GPS fix.
+        let distance: CLLocationDistance?
+    }
+
+    /// Current results, India only, nearest first. UI observes this.
+    private(set) var results: [Result] = []
+    /// Any error from the most recent search.
     private(set) var lastError: String?
+    /// True while a search for the current query is pending or running.
+    private(set) var isSearching = false
 
-    /// Free-form text the user has typed. Setting this triggers the
-    /// underlying MKLocalSearchCompleter.
+    /// Free-form text the user has typed. Setting this schedules a search.
     var query: String = "" {
         didSet {
             guard query != oldValue else { return }
-            applyQuery()
+            scheduleSearch()
         }
     }
 
-    /// Centre of the search region (typically current GPS). UI sets
-    /// this on appear. Setting it
-    /// re-applies the current query so suggestions reflect the new
-    /// area.
+    /// Current GPS fix. UI sets this on appear; results are sorted by
+    /// distance from it. Without a fix, MapKit's own ranking is kept.
     var biasCenter: CLLocationCoordinate2D? {
-        didSet { applyRegion() }
+        didSet {
+            guard biasCenter != oldValue else { return }
+            scheduleSearch(debounce: false)
+        }
     }
 
-    private let completer = MKLocalSearchCompleter()
+    private var searchTask: Task<Void, Never>?
     private let log = Logger(subsystem: "eu.kolaczek.tripperdashpp", category: "LocalSearch")
 
-    /// Czech Republic centre — fallback when we don't yet have a fix.
-    private static let czechRepublicCenter = CLLocationCoordinate2D(latitude: 49.8, longitude: 15.5)
+    /// Pause after the last keystroke before searching. MKLocalSearch is
+    /// rate-limited per app, so one request per keystroke would get
+    /// throttled while typing.
+    private static let debounce: Duration = .milliseconds(300)
+    /// Shortest query worth sending; one letter returns noise.
+    private static let minQueryLength = 2
 
-    override init() {
-        super.init()
-        completer.delegate = self
-        completer.resultTypes = [.address, .pointOfInterest]
-        applyRegion()
+    /// A box covering India, used with `.required` priority when there is
+    /// no GPS fix. MapKit treats it as a strong hint, not a guarantee, so
+    /// results are always filtered to ISO country code IN as well.
+    private static let indiaRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 21.5, longitude: 82.5),
+        latitudinalMeters: 3_600_000,
+        longitudinalMeters: 3_600_000)
+    /// Side of the box around the rider when there is a fix.
+    private static let nearbySpan: CLLocationDistance = 50_000
+    private static let countryCode = "IN"
+
+    private static func inIndia(_ items: [MKMapItem]) -> [MKMapItem] {
+        items.filter { $0.placemark.isoCountryCode == countryCode }
     }
 
-    // MARK: - Internals
+    /// With a fix: a 50 km box around the rider at `.default` priority.
+    /// Measured from Delhi: "Pizza Hut" then returns outlets 1–6 km away
+    /// (the India-wide box returned a country-wide sample, nearest 642 km),
+    /// while "Mumbai" still finds the city. `.required` on the small box
+    /// is wrong — "Mumbai" became a nearby expressway named after it.
+    private static func request(for text: String,
+                                near center: CLLocationCoordinate2D?) -> MKLocalSearch.Request {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = text
+        request.resultTypes = [.address, .pointOfInterest]
+        if let center {
+            request.region = MKCoordinateRegion(center: center,
+                                                latitudinalMeters: nearbySpan,
+                                                longitudinalMeters: nearbySpan)
+            request.regionPriority = .default
+        } else {
+            request.region = indiaRegion
+            request.regionPriority = .required
+        }
+        return request
+    }
 
-    private func applyQuery() {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            // Same non-animated path as the delegate callbacks — clearing
-            // the field is the single biggest row-count change the List
-            // ever sees (N → 0), so it must not animate either.
-            applyCompletions([])
-            completer.cancel()
-            completer.queryFragment = ""
+    // MARK: - Live search
+
+    private func scheduleSearch(debounce: Bool = true) {
+        searchTask?.cancel()
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count >= Self.minQueryLength else {
+            isSearching = false
+            lastError = nil
+            publish([])
             return
         }
-        completer.queryFragment = trimmed
+        isSearching = true
+        let center = biasCenter
+        searchTask = Task { [weak self] in
+            if debounce {
+                try? await Task.sleep(for: Self.debounce)
+            }
+            guard !Task.isCancelled else { return }
+            await self?.run(text, center: center)
+        }
     }
 
-    private func applyRegion() {
-        let center = biasCenter ?? Self.czechRepublicCenter
-        // Tighter box when we have GPS (200 km square, 100 km radius
-        // equivalent), wider when we're guessing the Czech Republic centroid.
-        let span: CLLocationDistance = (biasCenter == nil) ? 600_000 : 200_000
-        completer.region = MKCoordinateRegion(
-            center: center,
-            latitudinalMeters: span,
-            longitudinalMeters: span
-        )
-        // Re-fire the in-flight query so suggestions reflect the new
-        // bias.
-        if !query.isEmpty { applyQuery() }
+    private func run(_ text: String, center: CLLocationCoordinate2D?) async {
+        let items: [MKMapItem]
+        var errorMessage: String?
+        do {
+            items = try await MKLocalSearch(request: Self.request(for: text, near: center)).start().mapItems
+        } catch {
+            items = []
+            let ns = error as NSError
+            // placemarkNotFound = nothing matched; not worth a red banner.
+            if !(ns.domain == MKErrorDomain && ns.code == Int(MKError.Code.placemarkNotFound.rawValue)) {
+                let msg = error.localizedDescription
+                log.warning("search failed: \(msg, privacy: .public)")
+                errorMessage = msg
+            }
+        }
+        // A newer keystroke superseded this search while it was in flight.
+        guard !Task.isCancelled else { return }
+        publish(Self.rows(from: items, near: center))
+        lastError = errorMessage
+        isSearching = false
     }
+
+    /// India only, de-duplicated, nearest first when there is a fix.
+    private static func rows(from items: [MKMapItem],
+                             near center: CLLocationCoordinate2D?) -> [Result] {
+        let origin = center.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+        var seen = Set<String>()
+        var rows: [Result] = []
+        for item in inIndia(items) {
+            let dest = Destination.from(mapItem: item)
+            let c = dest.coordinate
+            let id = "\(dest.name)\u{1F}\(String(format: "%.5f,%.5f", c.latitude, c.longitude))"
+            guard seen.insert(id).inserted else { continue }
+            let distance = origin?.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
+            rows.append(Result(id: id,
+                               destination: dest,
+                               title: dest.name,
+                               subtitle: dest.addressLine ?? "",
+                               distance: distance))
+        }
+        if origin != nil {
+            // Stable: equal distances keep MapKit's relevance order.
+            rows = rows.enumerated()
+                .sorted { ($0.element.distance ?? .infinity, $0.offset) < ($1.element.distance ?? .infinity, $1.offset) }
+                .map(\.element)
+        }
+        return rows
+    }
+
+    // MARK: - One-shot geocode
 
     /// Geocode a free-text place name (e.g. a shared "Share to
     /// TripperDash++" label from Google/Apple Maps that carried no
-    /// coordinates) into a concrete `Destination`. Natural-language
-    /// MKLocalSearch; biased toward `near` when given so an ambiguous name
-    /// resolves to the nearby match (e.g. "Zvoleněves" near Prague rather
-    /// than "Zvolen" in Slovakia). Returns nil on no results / failure.
+    /// coordinates) into a concrete `Destination` in India. When `near`
+    /// is given, the nearest match wins. Returns nil on no results /
+    /// failure.
     func geocode(_ text: String,
                  near: CLLocationCoordinate2D? = nil) async -> Destination? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = trimmed
-        if let near {
-            request.region = MKCoordinateRegion(
-                center: near,
-                latitudinalMeters: 200_000,
-                longitudinalMeters: 200_000)
-        }
         do {
-            let response = try await MKLocalSearch(request: request).start()
-            guard let item = response.mapItems.first else { return nil }
-            return Destination.from(mapItem: item)
+            let items = try await MKLocalSearch(request: Self.request(for: trimmed, near: near)).start().mapItems
+            return Self.rows(from: items, near: near).first?.destination
         } catch {
             log.debug("geocode failed for \(trimmed, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return nil
         }
-    }
-
-    // MARK: - Resolve
-
-    /// Turn an autocomplete row into a real MKMapItem (with coords).
-    /// Throws on network failure or zero results.
-    func resolve(_ completion: MKLocalSearchCompletion) async throws -> Destination {
-        let request = MKLocalSearch.Request(completion: completion)
-        let response = try await MKLocalSearch(request: request).start()
-        guard let item = response.mapItems.first else {
-            throw LocalSearchError.noResults
-        }
-        return Destination.from(mapItem: item)
     }
 
     /// Reverse-geocode a tapped coordinate into an address line (best
@@ -139,93 +209,32 @@ final class LocalSearchService: NSObject {
             return nil
         }
     }
-
-    enum LocalSearchError: LocalizedError {
-        case noResults
-        var errorDescription: String? {
-            switch self {
-            case .noResults: return "No results for that search."
-            }
-        }
-    }
 }
 
-// MARK: - MKLocalSearchCompleterDelegate
-
-extension LocalSearchService: MKLocalSearchCompleterDelegate {
-    nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        let results = completer.results
-        Task { @MainActor in
-            self.applyCompletions(results)
-            self.lastError = nil
-        }
-    }
-    nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        let nsError = error as NSError
-        let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        // MKErrorDomain code 5 = MKError.directionsNotFound;
-        // MKLocalSearchCompleter routinely throws it on empty or single-character
-        // queries (Apple's server rejects them). Don't surface to the UI or warn —
-        // just clear results so the dropdown closes cleanly.
-        let isTransient = nsError.domain == MKErrorDomain && nsError.code == 5
-        Task { @MainActor in
-            self.applyCompletions([])
-            if isTransient {
-                self.lastError = nil
-            } else {
-                self.lastError = msg
-                self.log.warning("completer failed: \(msg, privacy: .public)")
-            }
-        }
-    }
-}
-
-// MARK: - Completion publishing
+// MARK: - Result publishing
 
 private extension LocalSearchService {
-    /// Publish a new completer snapshot to the UI.
+    /// Publish a new result snapshot to the UI.
     ///
-    /// Crash this guards against (TestFlight 1.0.2, iPhone 13 Pro Max,
-    /// iOS 26.6.1, 76 s after launch on cellular — i.e. someone poking at
-    /// the search field): `NSInternalInconsistencyException`
-    /// "Invalid Number Of Items In Section" aborting inside
-    /// `UICollectionView _endItemAnimationsWithInvalidationContext:`, under
-    /// SwiftUI's `UpdateCoalescingCollectionView.performBatchUpdates`. The
-    /// whole stack is SwiftUI/UIKit — no app frame beyond `main` — which is
-    /// the signature of a List whose backing collection view was told one
-    /// item count and handed another.
-    ///
-    /// `MKLocalSearchCompleter` calls its delegate on every keystroke AND
-    /// asynchronously as network results land, and the delegate hop is
-    /// `Task { @MainActor in … }` — scheduled at an arbitrary point, with no
-    /// coordination with SwiftUI's update cycle. If that write lands while
-    /// the List is mid-animation, the counts disagree and UIKit aborts.
-    ///
-    /// Two mitigations here, neither changing what the user sees:
-    ///   1. Skip the write entirely when the visible content is unchanged.
-    ///      The completer re-emits identical result sets often (repeat
-    ///      keystrokes, throttled retries); every one of those was a free
-    ///      chance to collide for no UI benefit.
+    /// Guards against a TestFlight 1.0.2 crash (iPhone 13 Pro Max, iOS
+    /// 26.6.1): `NSInternalInconsistencyException` "Invalid Number Of Items
+    /// In Section" inside SwiftUI's List-backing UICollectionView batch
+    /// update — a List told one item count and handed another, most likely
+    /// because results were written mid-animation. Two mitigations, neither
+    /// changing what the user sees:
+    ///   1. Skip the write when the rendered rows are unchanged.
     ///   2. Apply the change with animations disabled, so the List swaps
-    ///      rows outright instead of running a batch-update animation that
-    ///      can be invalidated by the next delegate callback mid-flight.
-    ///
-    /// NOT claimed to be proven: the crash report names no view, so this is
-    /// the most probable candidate hardened on reasoning, not a confirmed
-    /// root cause. It cannot regress behaviour — worst case the real cause
-    /// is elsewhere and this is simply a no-op made cheaper.
-    func applyCompletions(_ new: [MKLocalSearchCompletion]) {
-        // Compare on what's actually rendered (title + subtitle);
-        // MKLocalSearchCompletion has no stable identity of its own and
-        // reference equality would defeat the check.
-        let unchanged = new.count == completions.count
-            && zip(new, completions).allSatisfy {
-                $0.title == $1.title && $0.subtitle == $1.subtitle
-            }
+    ///      rows outright instead of running an interruptible batch update.
+    /// Row ids are unique per snapshot (de-duplicated in `rows(from:near:)`)
+    /// and derived from the place itself, so they are stable across
+    /// snapshots too — the two properties the List diff needs.
+    func publish(_ new: [Result]) {
+        let unchanged = new.count == results.count
+            && zip(new, results).allSatisfy { $0.id == $1.id }
         guard !unchanged else { return }
         var tx = Transaction()
         tx.disablesAnimations = true
-        withTransaction(tx) { completions = new }
+        withTransaction(tx) { results = new }
     }
 }
 
@@ -233,8 +242,7 @@ private extension LocalSearchService {
 
 private extension CLPlacemark {
     /// One-line address, defensively built from whatever CLGeocoder
-    /// gave us. Czech address order: street + number, postal code,
-    /// city.
+    /// gave us: street + number, postal code + city.
     var formattedOneLine: String {
         var parts: [String] = []
         if let street = thoroughfare {

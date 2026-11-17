@@ -3,8 +3,8 @@
 //  TripperDashPP
 //
 //  Phase 7b — full-screen sheet with sticky search field + live
-//  autocomplete list. Selecting a row resolves it to a Destination
-//  and calls `onPick`.
+//  results (India only, nearest first, with distance). Each row is
+//  already a Destination; selecting one calls `onPick`.
 //
 
 import MapKit
@@ -23,14 +23,13 @@ struct DestinationSearchSheet: View {
     var initialQuery: String? = nil
 
     @State private var search = LocalSearchService()
-    @State private var resolving: Bool = false
-    @State private var resolveError: String?
     @State private var didSeed = false
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         NavigationStack {
             List {
-                if let err = search.lastError ?? resolveError {
+                if let err = search.lastError {
                     Section {
                         Label(err, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
@@ -40,7 +39,7 @@ struct DestinationSearchSheet: View {
                     let recents = status.recentDestinationsStore.items
                     if recents.isEmpty {
                         Section("Tip") {
-                            Text("Start typing an address, city, or place name. Results are biased toward your current location.")
+                            Text("Start typing an address, city, or place name. Results are limited to India.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -86,43 +85,35 @@ struct DestinationSearchSheet: View {
                             }
                         }
                     }
-                } else if search.completions.isEmpty && !resolving {
+                } else if search.results.isEmpty {
                     Section {
-                        Text("No results yet…")
+                        Text(search.isSearching ? "Searching…" : "No places in India match that search.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
-                // Identify rows by offset + rendered content, not by the
-                // element and not by offset alone. The completer
-                // (MKLocalSearchCompleter) rewrites the whole array on every
-                // keystroke and can emit content-duplicate rows; keying on the
-                // element made SwiftUI's diff see a different item count than
-                // it actually inserted into its backing UICollectionView,
-                // crashing with "Invalid Number Of Items In Section".
-                //
-                // Bare offsets fixed the uniqueness half of that but are not
-                // STABLE: when the array goes 5 → 3 items, offsets 0/1/2 now
-                // address different places, so SwiftUI treats them as the same
-                // rows with new content and animates a diff whose endpoints
-                // disagree. A crash with this exact signature came back from
-                // TestFlight on 1.0.2 (see `LocalSearchService.applyCompletions`
-                // for the full report).
-                //
-                // `CompletionRow.id` therefore folds BOTH in: the offset keeps
-                // content-duplicate rows distinct (the original bug), and the
-                // title/subtitle make a changed place at the same offset read
-                // as a genuinely different row (the new one). Dropping either
-                // half reintroduces one of the two crashes.
-                ForEach(CompletionRow.rows(from: search.completions)) { row in
-                    let c = row.completion
+                // Row ids come from the place itself (name + coordinate) and
+                // are de-duplicated per snapshot in LocalSearchService, so they
+                // are unique AND stable — what SwiftUI's List diff needs. Keying
+                // on offsets or non-unique ids crashed with "Invalid Number Of
+                // Items In Section" (TestFlight 1.0.2; see
+                // `LocalSearchService.publish`).
+                ForEach(search.results) { r in
                     Button {
-                        Task { await pick(c) }
+                        pick(r.destination)
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(c.title).foregroundStyle(.primary)
-                            if !c.subtitle.isEmpty {
-                                Text(c.subtitle).font(.footnote).foregroundStyle(.secondary)
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(r.title).foregroundStyle(.primary)
+                                if !r.subtitle.isEmpty {
+                                    Text(r.subtitle).font(.footnote).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                            if let d = r.distance {
+                                Text(Self.distanceText(d))
+                                    .font(.footnote.monospacedDigit())
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -133,10 +124,10 @@ struct DestinationSearchSheet: View {
                     // does NOT override the button tint inside a List.
                     .buttonStyle(.plain)
                     .contentShape(Rectangle())
-                    .disabled(resolving)
                 }
             }
             .searchable(text: $search.query, prompt: "Where to?")
+            .searchFocused($searchFocused)
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -144,14 +135,9 @@ struct DestinationSearchSheet: View {
                     Button("Cancel") { dismiss() }
                 }
             }
-            .overlay {
-                if resolving {
-                    ProgressView("Resolving…")
-                        .padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                }
-            }
             .task {
+                // Open with the keyboard up so the rider can type straight away.
+                searchFocused = true
                 // Seed the search bias from current GPS, if available.
                 search.biasCenter = status.locationService.lastFix?.coordinate
                 // "Share to TripperDash++" fallback: pre-fill the query with
@@ -166,42 +152,18 @@ struct DestinationSearchSheet: View {
         }
     }
 
-    private func pick(_ completion: MKLocalSearchCompletion) async {
-        resolving = true
-        resolveError = nil
-        defer { resolving = false }
-        do {
-            let dest = try await search.resolve(completion)
-            status.recentDestinationsStore.record(dest)
-            onPick(dest)
-            dismiss()
-        } catch {
-            resolveError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
+    private func pick(_ dest: Destination) {
+        status.recentDestinationsStore.record(dest)
+        onPick(dest)
+        dismiss()
     }
-}
 
-// MARK: - Stable row identity for completer results
-
-/// One autocomplete row, carrying an identity that is BOTH unique within a
-/// snapshot AND stable in content — the two properties SwiftUI's `List` diff
-/// needs, and which neither `\.self` nor `\.offset` provides on its own.
-///
-/// `MKLocalSearchCompletion` is a reference type with no usable identity: two
-/// results for the same place compare unequal, while genuinely different
-/// results can render identically. Keying on the element itself once crashed
-/// the app with "Invalid Number Of Items In Section"; keying on bare offsets
-/// fixed that but let a changed place reuse a row identity, which is the
-/// shape the 1.0.2 TestFlight crash came back in. Combining both closes each
-/// other's gap — see the `ForEach` above and
-/// `LocalSearchService.applyCompletions`.
-private struct CompletionRow: Identifiable {
-    let id: String
-    let completion: MKLocalSearchCompletion
-
-    static func rows(from completions: [MKLocalSearchCompletion]) -> [CompletionRow] {
-        completions.enumerated().map { offset, c in
-            CompletionRow(id: "\(offset)\u{1F}\(c.title)\u{1F}\(c.subtitle)", completion: c)
+    /// "850 m", "12 km", "1,240 km" — metres under 1 km, whole km above.
+    private static func distanceText(_ metres: CLLocationDistance) -> String {
+        if metres < 1_000 {
+            return "\(Int((metres / 50).rounded()) * 50) m"
         }
+        let km = metres < 10_000 ? (metres / 100).rounded() / 10 : (metres / 1_000).rounded()
+        return km.formatted(.number.precision(.fractionLength(0...1))) + " km"
     }
 }
